@@ -19,6 +19,8 @@ export interface Client {
 
 export type CaseStatus = "draft" | "in-review" | "approved" | "rejected";
 
+export type SummaryStatus = "none" | "draft" | "accepted" | "dismissed";
+
 export interface Case {
   id: string;
   client_id: string;
@@ -26,11 +28,15 @@ export interface Case {
   property_value: number | null;
   loan_tenure_years: number;
   notes: string | null;
+  ai_summary: string | null;
+  ai_summary_status: SummaryStatus;
   created_at: string;
 }
 
 export type IncomeType = "basic" | "allowance" | "commission" | "rental" | "net_profit" | "other";
 export type Frequency = "monthly" | "annual";
+
+export type ReviewStatus = "unreviewed" | "accepted" | "overridden";
 
 export interface IncomeEntry {
   id: string;
@@ -39,6 +45,10 @@ export interface IncomeEntry {
   gross_amount: number;
   frequency: Frequency;
   supporting_doc: string | null;
+  ai_suggested_type: IncomeType | null;
+  ai_suggested_type_source: string | null;
+  ai_suggested_type_confidence: number | null;
+  ai_suggested_type_review_status: ReviewStatus;
   created_at: string;
 }
 
