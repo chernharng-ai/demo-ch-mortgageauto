@@ -18,9 +18,6 @@ export async function addIncomeEntry(
   formData: FormData,
 ): Promise<AddIncomeState> {
   const user = await getCurrentUser();
-  if (!user) {
-    return { error: "Sign in to add income entries." };
-  }
 
   const incomeType = String(formData.get("income_type") ?? "").trim();
   const grossAmountRaw = String(formData.get("gross_amount") ?? "").trim();
@@ -48,7 +45,7 @@ export async function addIncomeEntry(
 
   const { error } = await supabase.from("income_entries").insert({
     case_id: caseId,
-    user_id: user.id,
+    user_id: user?.id ?? null,
     income_type: incomeType,
     gross_amount: grossAmount,
     frequency,
@@ -100,9 +97,6 @@ async function checkAnomaly(
 }
 
 export async function deleteIncomeEntry(entryId: string, caseId: string) {
-  const user = await getCurrentUser();
-  if (!user) return;
-
   const supabase = await createClient();
   await supabase.from("income_entries").delete().eq("id", entryId);
   revalidatePath(`/cases/${caseId}`);

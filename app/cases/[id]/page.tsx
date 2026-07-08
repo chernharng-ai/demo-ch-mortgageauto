@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getCurrentUser } from "@/lib/supabase/profile";
 import type { AuditLog as AuditLogRow, Bank, Case, Client, DocumentItem, IncomeCalculation, IncomeEntry, LoanEligibility } from "@/lib/mortgage/types";
 import DocumentChecklist from "./DocumentChecklist";
 import IncomeEntries from "./IncomeEntries";
@@ -17,8 +16,7 @@ export const dynamic = "force-dynamic";
 export default async function CaseDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const supabase = await createClient();
-  const user = await getCurrentUser();
-  const canEdit = user !== null;
+  const canEdit = true; // temporarily open — see supabase/migrations/0005_temporary_reopen.sql
 
   const { data: caseRow, error: caseError } = await supabase
     .from("cases")
@@ -64,19 +62,9 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ id:
         </div>
         <div className="flex flex-col items-end gap-2">
           <CaseStatusControl caseId={caseRow.id} status={caseRow.status} canEdit={canEdit} />
-          {canEdit && <DeleteCaseButton caseId={caseRow.id} clientName={client?.full_name ?? "this client"} />}
+          <DeleteCaseButton caseId={caseRow.id} clientName={client?.full_name ?? "this client"} />
         </div>
       </div>
-
-      {!canEdit && (
-        <div className="rounded-md border border-neutral-200 bg-neutral-50 text-neutral-600 px-4 py-3 text-sm mb-8">
-          You&apos;re viewing this case as a visitor.{" "}
-          <Link href={`/login?next=/cases/${caseRow.id}`} className="underline font-medium">
-            Sign in
-          </Link>{" "}
-          to edit documents, income, or run calculations.
-        </div>
-      )}
 
       <section className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-10">
         <Stat label="Property Value" value={caseRow.property_value ? `RM ${caseRow.property_value.toLocaleString()}` : "—"} />

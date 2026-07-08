@@ -21,10 +21,6 @@ export async function runCalculations(
   _prevState: RunCalculationState,
 ): Promise<RunCalculationState> {
   const user = await getCurrentUser();
-  if (!user) {
-    return { error: "Sign in to run a calculation." };
-  }
-
   const supabase = await createClient();
 
   const { data: caseRow, error: caseError } = await supabase
@@ -54,7 +50,7 @@ export async function runCalculations(
   }
 
   const client = caseRow.clients;
-  const calculatedBy = user.email ?? "Team Member";
+  const calculatedBy = user?.email ?? "Team Member";
 
   for (const bank of banks) {
     const calcParams = bank.calc_params as BankCalcParams;
@@ -84,7 +80,7 @@ export async function runCalculations(
     await supabase.from("income_calculations").delete().eq("case_id", caseId).eq("bank_id", bank.id);
     await supabase.from("income_calculations").insert({
       case_id: caseId,
-      user_id: user.id,
+      user_id: user?.id ?? null,
       bank_id: bank.id,
       eligible_income: eligibleIncome,
       method_snapshot: { bank: bank.name, ...calcParams },
@@ -95,7 +91,7 @@ export async function runCalculations(
     await supabase.from("loan_eligibilities").delete().eq("case_id", caseId).eq("bank_id", bank.id);
     await supabase.from("loan_eligibilities").insert({
       case_id: caseId,
-      user_id: user.id,
+      user_id: user?.id ?? null,
       bank_id: bank.id,
       max_loan_amount: result.max_loan_amount,
       monthly_instalment: result.monthly_instalment,
@@ -105,7 +101,7 @@ export async function runCalculations(
 
     await supabase.from("audit_logs").insert({
       case_id: caseId,
-      user_id: user.id,
+      user_id: user?.id ?? null,
       action: "calculation_run",
       performed_by: calculatedBy,
       before_value: priorCalc || priorEligibility ? { income_calculation: priorCalc, loan_eligibility: priorEligibility } : null,

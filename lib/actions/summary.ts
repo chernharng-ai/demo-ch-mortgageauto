@@ -17,10 +17,6 @@ export interface SummaryState {
  */
 export async function generateSummary(caseId: string, _prevState: SummaryState): Promise<SummaryState> {
   const user = await getCurrentUser();
-  if (!user) {
-    return { error: "Sign in to generate a summary." };
-  }
-
   const supabase = await createClient();
 
   const { data: caseRow } = await supabase
@@ -70,9 +66,9 @@ export async function generateSummary(caseId: string, _prevState: SummaryState):
 
   await supabase.from("audit_logs").insert({
     case_id: caseId,
-    user_id: user.id,
+    user_id: user?.id ?? null,
     action: "summary_generated",
-    performed_by: user.email,
+    performed_by: user?.email ?? "Team Member",
     before_value: null,
     after_value: { summary },
   });
@@ -83,16 +79,14 @@ export async function generateSummary(caseId: string, _prevState: SummaryState):
 
 export async function setSummaryStatus(caseId: string, status: "accepted" | "dismissed") {
   const user = await getCurrentUser();
-  if (!user) return;
-
   const supabase = await createClient();
   await supabase.from("cases").update({ ai_summary_status: status }).eq("id", caseId);
 
   await supabase.from("audit_logs").insert({
     case_id: caseId,
-    user_id: user.id,
+    user_id: user?.id ?? null,
     action: "summary_" + status,
-    performed_by: user.email,
+    performed_by: user?.email ?? "Team Member",
     before_value: null,
     after_value: { status },
   });
