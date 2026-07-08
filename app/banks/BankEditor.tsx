@@ -3,16 +3,23 @@
 import { useActionState } from "react";
 import { updateBank, type UpdateBankState } from "@/lib/actions/banks";
 import type { Bank } from "@/lib/mortgage/types";
+import GuidelineReference from "./GuidelineReference";
 
 export default function BankEditor({ bank, canEdit }: { bank: Bank; canEdit: boolean }) {
   const initialState: UpdateBankState = {};
   const [state, formAction, pending] = useActionState(updateBank.bind(null, bank.id), initialState);
+  const guideline = (bank.calc_params as { guideline?: Record<string, string | null> }).guideline;
 
   return (
-    <details className="rounded-lg border border-neutral-200 p-4" open>
+    <details className="rounded-lg border border-neutral-200 p-4">
       <summary className="cursor-pointer font-semibold text-neutral-900">{bank.name}</summary>
 
-      <form action={formAction} className="mt-4 space-y-4">
+      <div className="mt-4">
+        <h3 className="text-sm font-semibold text-neutral-900 mb-2">Underwriting Guideline</h3>
+        <GuidelineReference guideline={guideline} />
+      </div>
+
+      <form action={formAction} className="mt-6 space-y-4">
         <div>
           <label htmlFor={`calc-${bank.id}`} className="block text-sm text-neutral-700 mb-1">
             Calculation parameters (JSON)
@@ -27,7 +34,7 @@ export default function BankEditor({ bank, canEdit }: { bank: Bank; canEdit: boo
           />
           {state.fieldErrors?.calc_params && <p className="text-xs text-red-600 mt-1">{state.fieldErrors.calc_params}</p>}
           <p className="text-xs text-neutral-400 mt-1">
-            Must include dsr_limit, stress_rate, tenure_max_years, and income_rules per employment type.
+            Must include stress_rate, tenure_max_years, income_rules, and either dsr_limit (flat) or dsr_tiers (income brackets).
           </p>
         </div>
 

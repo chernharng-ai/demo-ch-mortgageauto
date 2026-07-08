@@ -58,8 +58,9 @@ export async function runCalculations(
 
   for (const bank of banks) {
     const calcParams = bank.calc_params as BankCalcParams;
-    if (!calcParams?.dsr_limit || !calcParams?.stress_rate || !calcParams?.income_rules) {
-      continue; // skip mis-configured bank rather than failing the whole run
+    const hasDsr = calcParams?.dsr_limit || (calcParams?.dsr_tiers && calcParams.dsr_tiers.length > 0);
+    if (!hasDsr || !calcParams?.stress_rate || !calcParams?.income_rules) {
+      continue; // skip mis-configured bank (e.g. OCBC has no guideline data yet) rather than failing the whole run
     }
 
     // Preserve the prior result in the audit trail before it's replaced.
