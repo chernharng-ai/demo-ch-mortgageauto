@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/supabase/profile";
 
 export interface UpdateBankState {
   error?: string;
@@ -14,6 +15,11 @@ export async function updateBank(
   _prevState: UpdateBankState,
   formData: FormData,
 ): Promise<UpdateBankState> {
+  const user = await getCurrentUser();
+  if (!user || user.role !== "admin") {
+    return { error: "Only admins can edit bank configuration." };
+  }
+
   const calcParamsRaw = String(formData.get("calc_params") ?? "");
   const docRequirementsRaw = String(formData.get("doc_requirements") ?? "");
 

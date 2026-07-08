@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/supabase/profile";
 import type { Bank } from "@/lib/mortgage/types";
 
 export interface CreateCaseState {
@@ -14,6 +15,11 @@ export async function createCase(
   _prevState: CreateCaseState,
   formData: FormData,
 ): Promise<CreateCaseState> {
+  const user = await getCurrentUser();
+  if (!user) {
+    return { error: "Sign in to create a case." };
+  }
+
   const fullName = String(formData.get("full_name") ?? "").trim();
   const icNumber = String(formData.get("ic_number") ?? "").trim();
   const employmentType = String(formData.get("employment_type") ?? "employed");
@@ -41,6 +47,7 @@ export async function createCase(
   const { data: client, error: clientError } = await supabase
     .from("clients")
     .insert({
+      user_id: user.id,
       full_name: fullName,
       ic_number: icNumber || null,
       employment_type: employmentType,
@@ -56,6 +63,7 @@ export async function createCase(
   const { data: caseRow, error: caseError } = await supabase
     .from("cases")
     .insert({
+      user_id: user.id,
       client_id: client.id,
       status: "draft",
       property_value: propertyValue,
@@ -69,7 +77,7 @@ export async function createCase(
     return { error: `Could not create case: ${caseError?.message ?? "unknown error"}` };
   }
 
-  await generateDocumentChecklist(caseRow.id);
+  await generateDocumentChecklist(caseRow.id, user.id);
 
   revalidatePath("/");
   redirect(`/cases/${caseRow.id}`);
@@ -77,7 +85,7 @@ export async function createCase(
 
 /** Low-risk auto-execute tool (docs/AGENTIC_LAYER.md): builds the per-bank
  * document checklist from each bank's doc_requirements the moment a case is created. */
-export async function generateDocumentChecklist(caseId: string) {
+export async function generateDocumentChecklist(caseId: string, userId: string) {
   const supabase = await createClient();
 
   const { data: banks } = await supabase
@@ -90,6 +98,7 @@ export async function generateDocumentChecklist(caseId: string) {
   const rows = banks.flatMap((bank) =>
     (bank.doc_requirements ?? []).map((docName) => ({
       case_id: caseId,
+      user_id: userId,
       bank_id: bank.id,
       doc_name: docName,
       status: "pending" as const,
@@ -106,6 +115,9 @@ export async function updateDocumentStatus(
   caseId: string,
   status: "pending" | "received" | "missing",
 ) {
+  const user = await getCurrentUser();
+  if (!user) return;
+
   const supabase = await createClient();
   await supabase
     .from("document_items")
@@ -123,6 +135,9 @@ export async function updateCaseStatus(
   caseId: string,
   status: "draft" | "in-review" | "approved" | "rejected",
 ) {
+  const user = await getCurrentUser();
+  if (!user) return;
+
   const supabase = await createClient();
 
   const { data: before } = await supabase
@@ -135,8 +150,9 @@ export async function updateCaseStatus(
 
   await supabase.from("audit_logs").insert({
     case_id: caseId,
+    user_id: user.id,
     action: "status_change",
-    performed_by: "Team Member",
+    performed_by: user.email,
     before_value: before ?? null,
     after_value: { status },
   });
@@ -146,20 +162,26 @@ export async function updateCaseStatus(
 }
 
 export async function updateCaseNotes(caseId: string, notes: string) {
+  const user = await getCurrentUser();
+  if (!user) return;
+
   const supabase = await createClient();
   await supabase.from("cases").update({ notes }).eq("id", caseId);
   revalidatePath(`/cases/${caseId}`);
 }
 
 export async function deleteCase(caseId: string) {
+  const user = await getCurrentUser();
+  if (!user) return;
+
   const supabase = await createClient();
   // FKs are NOT ON DELETE CASCADE — clear dependents before the case row itself.
+  // audit_logs is append-only by design (no delete policy) and intentionally kept.
   await Promise.all([
     supabase.from("income_calculations").delete().eq("case_id", caseId),
     supabase.from("loan_eligibilities").delete().eq("case_id", caseId),
     supabase.from("document_items").delete().eq("case_id", caseId),
     supabase.from("income_entries").delete().eq("case_id", caseId),
-    supabase.from("audit_logs").delete().eq("case_id", caseId),
   ]);
   await supabase.from("cases").delete().eq("id", caseId);
   revalidatePath("/");

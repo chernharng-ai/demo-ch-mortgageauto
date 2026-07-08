@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/supabase/profile";
 
 export const dynamic = "force-dynamic";
 
@@ -26,6 +27,7 @@ function formatMYR(n: number | null) {
 
 export default async function DashboardPage() {
   const supabase = await createClient();
+  const user = await getCurrentUser();
 
   const { data: cases, error } = await supabase
     .from("cases")
@@ -38,18 +40,29 @@ export default async function DashboardPage() {
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Mortgage Case Review</h1>
-          <p className="text-sm text-neutral-500 mt-1">Shared team dashboard — no login required.</p>
+          <p className="text-sm text-neutral-500 mt-1">
+            {user ? "Shared team dashboard." : "Shared team dashboard — viewable by anyone, sign in to create or edit."}
+          </p>
         </div>
         <div className="flex items-center gap-3">
           <Link href="/banks" className="text-sm font-medium text-neutral-600 hover:text-neutral-900 hover:underline">
-            Manage Banks
+            {user?.role === "admin" ? "Manage Banks" : "View Banks"}
           </Link>
-          <Link
-            href="/cases/new"
-            className="rounded-md bg-neutral-900 text-white px-4 py-2 text-sm font-medium hover:bg-neutral-700 transition-colors"
-          >
-            + New Case
-          </Link>
+          {user ? (
+            <Link
+              href="/cases/new"
+              className="rounded-md bg-neutral-900 text-white px-4 py-2 text-sm font-medium hover:bg-neutral-700 transition-colors"
+            >
+              + New Case
+            </Link>
+          ) : (
+            <Link
+              href="/login?next=/cases/new"
+              className="rounded-md bg-neutral-900 text-white px-4 py-2 text-sm font-medium hover:bg-neutral-700 transition-colors"
+            >
+              Sign in to create a case
+            </Link>
+          )}
         </div>
       </div>
 
@@ -62,8 +75,8 @@ export default async function DashboardPage() {
       {!error && cases && cases.length === 0 && (
         <div className="rounded-lg border border-dashed border-neutral-300 p-12 text-center">
           <p className="text-neutral-500">No cases yet. Create your first case.</p>
-          <Link href="/cases/new" className="inline-block mt-4 text-sm font-medium text-neutral-900 underline">
-            + New Case
+          <Link href={user ? "/cases/new" : "/login?next=/cases/new"} className="inline-block mt-4 text-sm font-medium text-neutral-900 underline">
+            {user ? "+ New Case" : "Sign in to create a case"}
           </Link>
         </div>
       )}

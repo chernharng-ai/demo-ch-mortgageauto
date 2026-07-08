@@ -3,10 +3,14 @@
 import { useState, useTransition } from "react";
 import { updateCaseNotes } from "@/lib/actions/cases";
 
-export default function CaseNotes({ caseId, notes }: { caseId: string; notes: string | null }) {
+export default function CaseNotes({ caseId, notes, canEdit }: { caseId: string; notes: string | null; canEdit: boolean }) {
   const [value, setValue] = useState(notes ?? "");
   const [isPending, startTransition] = useTransition();
   const [saved, setSaved] = useState(false);
+
+  if (!canEdit) {
+    return <p className="text-sm text-neutral-600 bg-neutral-50 rounded-md p-3">{notes || "No notes yet."}</p>;
+  }
 
   function save() {
     startTransition(async () => {

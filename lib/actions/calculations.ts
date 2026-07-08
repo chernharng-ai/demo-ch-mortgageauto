@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/supabase/profile";
 import { computeEligibleIncome, computeLoanEligibility, type BankCalcParams } from "@/lib/mortgage/calc";
 import type { Bank, Case, Client, IncomeCalculation, IncomeEntry, LoanEligibility } from "@/lib/mortgage/types";
 
@@ -19,6 +20,11 @@ export async function runCalculations(
   caseId: string,
   _prevState: RunCalculationState,
 ): Promise<RunCalculationState> {
+  const user = await getCurrentUser();
+  if (!user) {
+    return { error: "Sign in to run a calculation." };
+  }
+
   const supabase = await createClient();
 
   const { data: caseRow, error: caseError } = await supabase
@@ -48,7 +54,7 @@ export async function runCalculations(
   }
 
   const client = caseRow.clients;
-  const calculatedBy = "Team Member";
+  const calculatedBy = user.email ?? "Team Member";
 
   for (const bank of banks) {
     const calcParams = bank.calc_params as BankCalcParams;
@@ -77,6 +83,7 @@ export async function runCalculations(
     await supabase.from("income_calculations").delete().eq("case_id", caseId).eq("bank_id", bank.id);
     await supabase.from("income_calculations").insert({
       case_id: caseId,
+      user_id: user.id,
       bank_id: bank.id,
       eligible_income: eligibleIncome,
       method_snapshot: { bank: bank.name, ...calcParams },
@@ -87,6 +94,7 @@ export async function runCalculations(
     await supabase.from("loan_eligibilities").delete().eq("case_id", caseId).eq("bank_id", bank.id);
     await supabase.from("loan_eligibilities").insert({
       case_id: caseId,
+      user_id: user.id,
       bank_id: bank.id,
       max_loan_amount: result.max_loan_amount,
       monthly_instalment: result.monthly_instalment,
@@ -96,6 +104,7 @@ export async function runCalculations(
 
     await supabase.from("audit_logs").insert({
       case_id: caseId,
+      user_id: user.id,
       action: "calculation_run",
       performed_by: calculatedBy,
       before_value: priorCalc || priorEligibility ? { income_calculation: priorCalc, loan_eligibility: priorEligibility } : null,

@@ -17,12 +17,14 @@ function formatMYR(n: number) {
 export default function CalculationPanel({
   caseId,
   hasIncome,
+  canEdit,
   banks,
   incomeCalculations,
   loanEligibilities,
 }: {
   caseId: string;
   hasIncome: boolean;
+  canEdit: boolean;
   banks: Bank[];
   incomeCalculations: IncomeCalculation[];
   loanEligibilities: LoanEligibility[];
@@ -41,16 +43,18 @@ export default function CalculationPanel({
 
   return (
     <div className="space-y-4">
-      <form action={formAction}>
-        <button
-          type="submit"
-          disabled={pending || !hasIncome}
-          title={!hasIncome ? "Add income entries first" : undefined}
-          className="rounded-md bg-neutral-900 text-white px-4 py-2 text-sm font-medium hover:bg-neutral-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          {pending ? "Calculating…" : "Run Calculation"}
-        </button>
-      </form>
+      {canEdit && (
+        <form action={formAction}>
+          <button
+            type="submit"
+            disabled={pending || !hasIncome}
+            title={!hasIncome ? "Add income entries first" : undefined}
+            className="rounded-md bg-neutral-900 text-white px-4 py-2 text-sm font-medium hover:bg-neutral-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {pending ? "Calculating…" : "Run Calculation"}
+          </button>
+        </form>
+      )}
 
       {state.error && <div className="rounded-md border border-red-200 bg-red-50 text-red-800 px-3 py-2 text-sm">{state.error}</div>}
       {state.success && <div className="rounded-md border border-emerald-200 bg-emerald-50 text-emerald-800 px-3 py-2 text-sm">Calculation complete.</div>}

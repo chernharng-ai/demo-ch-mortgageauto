@@ -4,7 +4,7 @@ import { useActionState } from "react";
 import { updateBank, type UpdateBankState } from "@/lib/actions/banks";
 import type { Bank } from "@/lib/mortgage/types";
 
-export default function BankEditor({ bank }: { bank: Bank }) {
+export default function BankEditor({ bank, canEdit }: { bank: Bank; canEdit: boolean }) {
   const initialState: UpdateBankState = {};
   const [state, formAction, pending] = useActionState(updateBank.bind(null, bank.id), initialState);
 
@@ -21,8 +21,9 @@ export default function BankEditor({ bank }: { bank: Bank }) {
             id={`calc-${bank.id}`}
             name="calc_params"
             rows={10}
+            disabled={!canEdit}
             defaultValue={JSON.stringify(bank.calc_params, null, 2)}
-            className="w-full rounded-md border border-neutral-300 px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-neutral-900"
+            className="w-full rounded-md border border-neutral-300 px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-neutral-900 disabled:bg-neutral-50 disabled:text-neutral-500"
           />
           {state.fieldErrors?.calc_params && <p className="text-xs text-red-600 mt-1">{state.fieldErrors.calc_params}</p>}
           <p className="text-xs text-neutral-400 mt-1">
@@ -38,8 +39,9 @@ export default function BankEditor({ bank }: { bank: Bank }) {
             id={`docs-${bank.id}`}
             name="doc_requirements"
             rows={6}
+            disabled={!canEdit}
             defaultValue={bank.doc_requirements.join("\n")}
-            className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-900"
+            className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-900 disabled:bg-neutral-50 disabled:text-neutral-500"
           />
           {state.fieldErrors?.doc_requirements && <p className="text-xs text-red-600 mt-1">{state.fieldErrors.doc_requirements}</p>}
         </div>
@@ -49,13 +51,15 @@ export default function BankEditor({ bank }: { bank: Bank }) {
           <div className="rounded-md border border-emerald-200 bg-emerald-50 text-emerald-800 px-3 py-2 text-sm">Saved.</div>
         )}
 
-        <button
-          type="submit"
-          disabled={pending}
-          className="rounded-md bg-neutral-900 text-white px-4 py-2 text-sm font-medium hover:bg-neutral-700 disabled:opacity-50"
-        >
-          {pending ? "Saving…" : "Save Changes"}
-        </button>
+        {canEdit && (
+          <button
+            type="submit"
+            disabled={pending}
+            className="rounded-md bg-neutral-900 text-white px-4 py-2 text-sm font-medium hover:bg-neutral-700 disabled:opacity-50"
+          >
+            {pending ? "Saving…" : "Save Changes"}
+          </button>
+        )}
       </form>
     </details>
   );
