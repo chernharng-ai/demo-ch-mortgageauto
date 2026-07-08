@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { computeEligibleIncome, computeLoanEligibility, type BankCalcParams } from "@/lib/mortgage/calc";
-import type { Bank, Case, Client, IncomeEntry } from "@/lib/mortgage/types";
+import type { Bank, Case, Client, IncomeCalculation, IncomeEntry, LoanEligibility } from "@/lib/mortgage/types";
 
 export interface RunCalculationState {
   error?: string;
@@ -56,6 +56,20 @@ export async function runCalculations(
       continue; // skip mis-configured bank rather than failing the whole run
     }
 
+    // Preserve the prior result in the audit trail before it's replaced.
+    const { data: priorCalc } = await supabase
+      .from("income_calculations")
+      .select("*")
+      .eq("case_id", caseId)
+      .eq("bank_id", bank.id)
+      .maybeSingle<IncomeCalculation>();
+    const { data: priorEligibility } = await supabase
+      .from("loan_eligibilities")
+      .select("*")
+      .eq("case_id", caseId)
+      .eq("bank_id", bank.id)
+      .maybeSingle<LoanEligibility>();
+
     const eligibleIncome = computeEligibleIncome(incomeEntries, client.employment_type, calcParams.income_rules);
     const result = computeLoanEligibility(eligibleIncome, caseRow.property_value, caseRow.loan_tenure_years, calcParams);
 
@@ -79,15 +93,20 @@ export async function runCalculations(
       dsr_ratio: result.dsr_ratio,
       eligibility_status: result.eligibility_status,
     });
-  }
 
-  await supabase.from("audit_logs").insert({
-    case_id: caseId,
-    action: "calculation_run",
-    performed_by: calculatedBy,
-    before_value: null,
-    after_value: { bank_count: banks.length, income_entry_count: incomeEntries.length },
-  });
+    await supabase.from("audit_logs").insert({
+      case_id: caseId,
+      action: "calculation_run",
+      performed_by: calculatedBy,
+      before_value: priorCalc || priorEligibility ? { income_calculation: priorCalc, loan_eligibility: priorEligibility } : null,
+      after_value: {
+        bank: bank.name,
+        eligible_income: eligibleIncome,
+        max_loan_amount: result.max_loan_amount,
+        eligibility_status: result.eligibility_status,
+      },
+    });
+  }
 
   revalidatePath(`/cases/${caseId}`);
   return { success: true };

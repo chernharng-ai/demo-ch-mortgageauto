@@ -1,11 +1,14 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import type { Bank, Case, Client, DocumentItem, IncomeCalculation, IncomeEntry, LoanEligibility } from "@/lib/mortgage/types";
+import type { AuditLog as AuditLogRow, Bank, Case, Client, DocumentItem, IncomeCalculation, IncomeEntry, LoanEligibility } from "@/lib/mortgage/types";
 import DocumentChecklist from "./DocumentChecklist";
 import IncomeEntries from "./IncomeEntries";
 import CalculationPanel from "./CalculationPanel";
 import CaseStatusControl from "./CaseStatusControl";
+import CaseNotes from "./CaseNotes";
+import AuditLog from "./AuditLog";
+import DeleteCaseButton from "./DeleteCaseButton";
 
 export const dynamic = "force-dynamic";
 
@@ -23,13 +26,14 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ id:
     notFound();
   }
 
-  const [{ data: documentItems }, { data: incomeEntries }, { data: banks }, { data: incomeCalculations }, { data: loanEligibilities }] =
+  const [{ data: documentItems }, { data: incomeEntries }, { data: banks }, { data: incomeCalculations }, { data: loanEligibilities }, { data: auditLogs }] =
     await Promise.all([
       supabase.from("document_items").select("*").eq("case_id", id).order("doc_name").returns<DocumentItem[]>(),
       supabase.from("income_entries").select("*").eq("case_id", id).order("created_at").returns<IncomeEntry[]>(),
       supabase.from("banks").select("*").returns<Bank[]>(),
       supabase.from("income_calculations").select("*").eq("case_id", id).returns<IncomeCalculation[]>(),
       supabase.from("loan_eligibilities").select("*").eq("case_id", id).returns<LoanEligibility[]>(),
+      supabase.from("audit_logs").select("*").eq("case_id", id).order("created_at", { ascending: false }).returns<AuditLogRow[]>(),
     ]);
 
   const client = caseRow.clients;
@@ -54,7 +58,10 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ id:
             {client?.ic_number ? ` · IC ${client.ic_number}` : ""}
           </p>
         </div>
-        <CaseStatusControl caseId={caseRow.id} status={caseRow.status} />
+        <div className="flex flex-col items-end gap-2">
+          <CaseStatusControl caseId={caseRow.id} status={caseRow.status} />
+          <DeleteCaseButton caseId={caseRow.id} clientName={client?.full_name ?? "this client"} />
+        </div>
       </div>
 
       <section className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-10">
@@ -64,12 +71,10 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ id:
         <Stat label="Income Lines" value={String(income.length)} />
       </section>
 
-      {caseRow.notes && (
-        <section className="mb-10">
-          <h2 className="text-sm font-semibold text-neutral-900 mb-2">Notes</h2>
-          <p className="text-sm text-neutral-600 bg-neutral-50 rounded-md p-3">{caseRow.notes}</p>
-        </section>
-      )}
+      <section className="mb-10">
+        <h2 className="text-sm font-semibold text-neutral-900 mb-2">Notes</h2>
+        <CaseNotes caseId={caseRow.id} notes={caseRow.notes} />
+      </section>
 
       <section className="mb-10">
         <h2 className="text-sm font-semibold text-neutral-900 mb-3">Document Checklist</h2>
@@ -90,6 +95,11 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ id:
           incomeCalculations={incomeCalculations ?? []}
           loanEligibilities={loanEligibilities ?? []}
         />
+      </section>
+
+      <section className="mb-10">
+        <h2 className="text-sm font-semibold text-neutral-900 mb-3">Activity Log</h2>
+        <AuditLog logs={auditLogs ?? []} />
       </section>
     </main>
   );

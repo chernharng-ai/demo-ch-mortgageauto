@@ -40,12 +40,17 @@ export default async function DashboardPage() {
           <h1 className="text-2xl font-bold tracking-tight">Mortgage Case Review</h1>
           <p className="text-sm text-neutral-500 mt-1">Shared team dashboard — no login required.</p>
         </div>
-        <Link
-          href="/cases/new"
-          className="rounded-md bg-neutral-900 text-white px-4 py-2 text-sm font-medium hover:bg-neutral-700 transition-colors"
-        >
-          + New Case
-        </Link>
+        <div className="flex items-center gap-3">
+          <Link href="/banks" className="text-sm font-medium text-neutral-600 hover:text-neutral-900 hover:underline">
+            Manage Banks
+          </Link>
+          <Link
+            href="/cases/new"
+            className="rounded-md bg-neutral-900 text-white px-4 py-2 text-sm font-medium hover:bg-neutral-700 transition-colors"
+          >
+            + New Case
+          </Link>
+        </div>
       </div>
 
       {error && (

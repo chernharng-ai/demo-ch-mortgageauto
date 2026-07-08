@@ -153,6 +153,14 @@ export async function updateCaseNotes(caseId: string, notes: string) {
 
 export async function deleteCase(caseId: string) {
   const supabase = await createClient();
+  // FKs are NOT ON DELETE CASCADE — clear dependents before the case row itself.
+  await Promise.all([
+    supabase.from("income_calculations").delete().eq("case_id", caseId),
+    supabase.from("loan_eligibilities").delete().eq("case_id", caseId),
+    supabase.from("document_items").delete().eq("case_id", caseId),
+    supabase.from("income_entries").delete().eq("case_id", caseId),
+    supabase.from("audit_logs").delete().eq("case_id", caseId),
+  ]);
   await supabase.from("cases").delete().eq("id", caseId);
   revalidatePath("/");
   redirect("/");
