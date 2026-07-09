@@ -5,31 +5,41 @@
 // this app's data model, so they're captured as plain text and inserted
 // verbatim rather than re-derived.
 
-import type { Case, Client, DocStatus, DocumentItem } from "./types";
+import type { Case, Client, DocStatus, DocumentItem, DocumentSubItem } from "./types";
 
 export interface DocChecklistGroup {
   docName: string;
   status: DocStatus;
+  subItems: DocumentSubItem[];
 }
 
-export function buildDocChecklistGroups(items: DocumentItem[]): DocChecklistGroup[] {
+export function buildDocChecklistGroups(items: DocumentItem[], subItems: DocumentSubItem[] = []): DocChecklistGroup[] {
   const names = [...new Set(items.map((i) => i.doc_name))];
   return names.map((docName) => {
     const groupItems = items.filter((i) => i.doc_name === docName);
-    return { docName, status: groupItems[0]?.status ?? "pending" };
+    const groupSubItems = subItems.filter((s) => s.doc_name === docName).sort((a, b) => a.sort_order - b.sort_order);
+    return { docName, status: groupItems[0]?.status ?? "pending", subItems: groupSubItems };
   });
 }
 
 function icon(status: DocStatus) {
-  return status === "received" ? "✅" : "⚠️";
+  if (status === "received") return "✅";
+  if (status === "missing") return "❌";
+  return "⚠️";
 }
 
 function line(label: string, value: string | number | null | undefined) {
   return `${label} : ${value ?? ""}`;
 }
 
+function docChecklistLine(g: DocChecklistGroup) {
+  if (g.subItems.length === 0) return `- ${g.docName} ${icon(g.status)}`;
+  const subLine = g.subItems.map((s) => `${s.label} ${icon(s.status)}`).join(", ");
+  return `- ${g.docName} ${subLine}`;
+}
+
 export function generateReviewNote(caseRow: Case, client: Client, docGroups: DocChecklistGroup[]): string {
-  const docChecklist = docGroups.map((g) => `- ${g.docName} ${icon(g.status)}`).join("\n");
+  const docChecklist = docGroups.map(docChecklistLine).join("\n");
 
   if (caseRow.review_client_type === "salary_earner") {
     return [

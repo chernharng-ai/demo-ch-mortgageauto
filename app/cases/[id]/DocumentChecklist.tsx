@@ -1,8 +1,9 @@
 "use client";
 
-import { useTransition } from "react";
-import { resetDocumentGroupStatus, assignDocumentMatch } from "@/lib/actions/documents";
-import type { CaseDocument, DocStatus, DocumentItem } from "@/lib/mortgage/types";
+import { useRef, useState, useTransition } from "react";
+import { resetDocumentGroupStatus, assignDocumentMatch, addChecklistItem, deleteChecklistItem } from "@/lib/actions/documents";
+import { addSubItem, setSubItemStatus, deleteSubItem } from "@/lib/actions/subItems";
+import type { CaseDocument, DocStatus, DocumentItem, DocumentSubItem } from "@/lib/mortgage/types";
 import BulkDocumentUpload from "./BulkDocumentUpload";
 
 type SignedCaseDocument = CaseDocument & { signedUrl: string | null };
@@ -11,18 +12,28 @@ interface DocGroup {
   docName: string;
   status: DocStatus;
   bankCount: number;
+  isCustom: boolean;
   document: SignedCaseDocument | null;
+  subItems: DocumentSubItem[];
+}
+
+function icon(status: DocStatus) {
+  if (status === "received") return "✅";
+  if (status === "missing") return "❌";
+  return "⚠️";
 }
 
 export default function DocumentChecklist({
   caseId,
   items,
   caseDocuments,
+  subItems,
   canEdit,
 }: {
   caseId: string;
   items: DocumentItem[];
   caseDocuments: SignedCaseDocument[];
+  subItems: DocumentSubItem[];
   canEdit: boolean;
 }) {
   const candidateDocNames = [...new Set(items.map((i) => i.doc_name))];
@@ -30,7 +41,15 @@ export default function DocumentChecklist({
   const groups: DocGroup[] = candidateDocNames.map((docName) => {
     const groupItems = items.filter((i) => i.doc_name === docName);
     const document = [...caseDocuments].reverse().find((d) => d.matched_doc_name === docName) ?? null;
-    return { docName, status: groupItems[0]?.status ?? "pending", bankCount: groupItems.length, document };
+    const groupSubItems = subItems.filter((s) => s.doc_name === docName).sort((a, b) => a.sort_order - b.sort_order);
+    return {
+      docName,
+      status: groupItems[0]?.status ?? "pending",
+      bankCount: groupItems.length,
+      isCustom: groupItems.every((i) => i.bank_id === null),
+      document,
+      subItems: groupSubItems,
+    };
   });
 
   const unmatched = caseDocuments.filter((d) => !d.matched_doc_name);
@@ -64,6 +83,8 @@ export default function DocumentChecklist({
         </div>
       )}
 
+      {canEdit && <AddChecklistItemRow caseId={caseId} />}
+
       {unmatched.length > 0 && (
         <div>
           <h3 className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-2">Unmatched uploads — assign manually</h3>
@@ -80,20 +101,21 @@ export default function DocumentChecklist({
 
 function DocRow({ caseId, group, canEdit }: { caseId: string; group: DocGroup; canEdit: boolean }) {
   const [isPending, startTransition] = useTransition();
-  const received = group.status === "received";
 
   return (
     <li className="rounded-md border border-neutral-200 px-3 py-2">
       <div className="flex items-center justify-between gap-3">
         <span className="text-sm text-neutral-800 flex items-center gap-2">
-          <span aria-hidden>{received ? "✅" : "⚠️"}</span>
+          <span aria-hidden>{icon(group.status)}</span>
           {group.docName}
-          <span className="text-xs text-neutral-400">
-            ({group.bankCount} bank{group.bankCount === 1 ? "" : "s"})
-          </span>
+          {!group.isCustom && (
+            <span className="text-xs text-neutral-400">
+              ({group.bankCount} bank{group.bankCount === 1 ? "" : "s"})
+            </span>
+          )}
         </span>
         {canEdit && (
-          <div className="flex gap-1" aria-disabled={isPending}>
+          <div className="flex items-center gap-1" aria-disabled={isPending}>
             {(["pending", "received", "missing"] as const).map((s) => (
               <button
                 key={s}
@@ -105,6 +127,20 @@ function DocRow({ caseId, group, canEdit }: { caseId: string; group: DocGroup; c
                 {s}
               </button>
             ))}
+            {group.isCustom && (
+              <button
+                type="button"
+                disabled={isPending}
+                onClick={() => {
+                  if (window.confirm(`Remove the "${group.docName}" checklist item?`)) {
+                    startTransition(() => deleteChecklistItem(caseId, group.docName));
+                  }
+                }}
+                className="text-xs px-2 py-1 rounded border border-neutral-200 text-red-600 hover:bg-red-50"
+              >
+                Remove
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -119,7 +155,114 @@ function DocRow({ caseId, group, canEdit }: { caseId: string; group: DocGroup; c
           )}
         </p>
       )}
+
+      <SubItems caseId={caseId} docName={group.docName} subItems={group.subItems} canEdit={canEdit} />
     </li>
+  );
+}
+
+function SubItems({ caseId, docName, subItems, canEdit }: { caseId: string; docName: string; subItems: DocumentSubItem[]; canEdit: boolean }) {
+  const [isPending, startTransition] = useTransition();
+  const [adding, setAdding] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  function cycle(current: DocStatus): DocStatus {
+    if (current === "pending") return "received";
+    if (current === "received") return "missing";
+    return "pending";
+  }
+
+  function submitAdd() {
+    const value = inputRef.current?.value.trim();
+    if (!value) return;
+    startTransition(() => addSubItem(caseId, docName, value));
+    if (inputRef.current) inputRef.current.value = "";
+    setAdding(false);
+  }
+
+  if (subItems.length === 0 && !canEdit) return null;
+
+  return (
+    <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+      {subItems.map((s) => (
+        <span key={s.id} className="inline-flex items-center gap-1 text-xs rounded border border-neutral-200 pl-2 pr-1 py-0.5">
+          <button
+            type="button"
+            disabled={isPending || !canEdit}
+            onClick={() => startTransition(() => setSubItemStatus(s.id, caseId, cycle(s.status)))}
+            className="disabled:cursor-default"
+          >
+            {s.label} {icon(s.status)}
+          </button>
+          {canEdit && (
+            <button
+              type="button"
+              disabled={isPending}
+              onClick={() => startTransition(() => deleteSubItem(s.id, caseId))}
+              className="text-neutral-400 hover:text-red-600 px-0.5"
+              aria-label={`Remove ${s.label}`}
+            >
+              ×
+            </button>
+          )}
+        </span>
+      ))}
+
+      {canEdit &&
+        (adding ? (
+          <input
+            ref={inputRef}
+            autoFocus
+            type="text"
+            placeholder="e.g. 4, Borang B/Be"
+            onKeyDown={(e) => {
+              if (e.key === "Enter") submitAdd();
+              if (e.key === "Escape") setAdding(false);
+            }}
+            onBlur={submitAdd}
+            className="text-xs rounded border border-neutral-300 px-2 py-0.5 w-32"
+          />
+        ) : (
+          <button type="button" onClick={() => setAdding(true)} className="text-xs text-neutral-400 hover:text-neutral-700">
+            + sub-item
+          </button>
+        ))}
+    </div>
+  );
+}
+
+function AddChecklistItemRow({ caseId }: { caseId: string }) {
+  const [isPending, startTransition] = useTransition();
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  function submit() {
+    const value = inputRef.current?.value.trim();
+    if (!value) return;
+    startTransition(() => addChecklistItem(caseId, value));
+    if (inputRef.current) inputRef.current.value = "";
+  }
+
+  return (
+    <div className="flex gap-2">
+      <input
+        ref={inputRef}
+        type="text"
+        placeholder="Add checklist item (e.g. Client Info, Prop Doc)"
+        onKeyDown={(e) => {
+          if (e.key === "Enter") submit();
+        }}
+        disabled={isPending}
+        className="flex-1 text-sm rounded-md border border-neutral-300 px-3 py-1.5"
+      />
+      <button
+        type="button"
+        onClick={submit}
+        disabled={isPending}
+        className="text-xs rounded-md border border-neutral-300 px-3 py-1.5 font-medium hover:bg-neutral-100 disabled:opacity-50"
+      >
+        Add
+      </button>
+    </div>
   );
 }
 

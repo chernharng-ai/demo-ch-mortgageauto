@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import type { AuditLog as AuditLogRow, Bank, Case, CaseDocument, Client, DocumentItem, IncomeCalculation, IncomeEntry, LoanEligibility } from "@/lib/mortgage/types";
+import type { AuditLog as AuditLogRow, Bank, Case, CaseDocument, Client, DocumentItem, DocumentSubItem, IncomeCalculation, IncomeEntry, LoanEligibility } from "@/lib/mortgage/types";
 import DocumentChecklist from "./DocumentChecklist";
 import IncomeEntries from "./IncomeEntries";
 import CalculationPanel from "./CalculationPanel";
@@ -29,16 +29,25 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ id:
     notFound();
   }
 
-  const [{ data: documentItems }, { data: incomeEntries }, { data: banks }, { data: incomeCalculations }, { data: loanEligibilities }, { data: auditLogs }, { data: caseDocuments }] =
-    await Promise.all([
-      supabase.from("document_items").select("*").eq("case_id", id).order("doc_name").returns<DocumentItem[]>(),
-      supabase.from("income_entries").select("*").eq("case_id", id).order("created_at").returns<IncomeEntry[]>(),
-      supabase.from("banks").select("*").returns<Bank[]>(),
-      supabase.from("income_calculations").select("*").eq("case_id", id).returns<IncomeCalculation[]>(),
-      supabase.from("loan_eligibilities").select("*").eq("case_id", id).returns<LoanEligibility[]>(),
-      supabase.from("audit_logs").select("*").eq("case_id", id).order("created_at", { ascending: false }).returns<AuditLogRow[]>(),
-      supabase.from("case_documents").select("*").eq("case_id", id).order("created_at").returns<CaseDocument[]>(),
-    ]);
+  const [
+    { data: documentItems },
+    { data: incomeEntries },
+    { data: banks },
+    { data: incomeCalculations },
+    { data: loanEligibilities },
+    { data: auditLogs },
+    { data: caseDocuments },
+    { data: documentSubItems },
+  ] = await Promise.all([
+    supabase.from("document_items").select("*").eq("case_id", id).order("doc_name").returns<DocumentItem[]>(),
+    supabase.from("income_entries").select("*").eq("case_id", id).order("created_at").returns<IncomeEntry[]>(),
+    supabase.from("banks").select("*").returns<Bank[]>(),
+    supabase.from("income_calculations").select("*").eq("case_id", id).returns<IncomeCalculation[]>(),
+    supabase.from("loan_eligibilities").select("*").eq("case_id", id).returns<LoanEligibility[]>(),
+    supabase.from("audit_logs").select("*").eq("case_id", id).order("created_at", { ascending: false }).returns<AuditLogRow[]>(),
+    supabase.from("case_documents").select("*").eq("case_id", id).order("created_at").returns<CaseDocument[]>(),
+    supabase.from("document_sub_items").select("*").eq("case_id", id).order("sort_order").returns<DocumentSubItem[]>(),
+  ]);
 
   const client = caseRow.clients;
   const docs = documentItems ?? [];
@@ -58,6 +67,7 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ id:
     signedUrls = new Map((signed ?? []).map((s) => [s.path ?? "", s.signedUrl]));
   }
   const signedCaseDocuments = rawCaseDocuments.map((d) => ({ ...d, signedUrl: signedUrls.get(d.file_path) ?? null }));
+  const subItems = documentSubItems ?? [];
   const total = docs.length;
   const received = docs.filter((d) => d.status === "received").length;
   const completeness = total > 0 ? Math.round((received / total) * 100) : 0;
@@ -101,7 +111,7 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ id:
 
       <section className="mb-10">
         <h2 className="text-sm font-semibold text-neutral-900 mb-3">Document Checklist</h2>
-        <DocumentChecklist caseId={caseRow.id} items={docs} caseDocuments={signedCaseDocuments} canEdit={canEdit} />
+        <DocumentChecklist caseId={caseRow.id} items={docs} caseDocuments={signedCaseDocuments} subItems={subItems} canEdit={canEdit} />
       </section>
 
       <section className="mb-10">
@@ -128,6 +138,7 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ id:
         caseRow={caseRow}
         client={client}
         documentItems={docs}
+        documentSubItems={subItems}
         appUrl={process.env.NEXT_PUBLIC_APP_URL ?? ""}
         canEdit={canEdit}
       />

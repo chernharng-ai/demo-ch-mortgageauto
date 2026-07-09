@@ -88,6 +88,16 @@ export interface DocumentItem {
   created_at: string;
 }
 
+export interface DocumentSubItem {
+  id: string;
+  case_id: string;
+  doc_name: string;
+  label: string;
+  status: DocStatus;
+  sort_order: number;
+  created_at: string;
+}
+
 export interface CaseDocument {
   id: string;
   case_id: string;

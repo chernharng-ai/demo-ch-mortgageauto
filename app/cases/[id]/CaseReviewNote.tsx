@@ -3,7 +3,7 @@
 import { useActionState, useMemo, useState } from "react";
 import { updateCaseReview, type UpdateReviewState } from "@/lib/actions/review";
 import { buildDocChecklistGroups, generateReviewNote } from "@/lib/mortgage/reviewNote";
-import type { Case, Client, DocumentItem, ReviewClientType } from "@/lib/mortgage/types";
+import type { Case, Client, DocumentItem, DocumentSubItem, ReviewClientType } from "@/lib/mortgage/types";
 
 interface FormState {
   review_client_type: ReviewClientType;
@@ -48,6 +48,7 @@ export default function CaseReviewNote({
   caseRow,
   client,
   documentItems,
+  documentSubItems,
   appUrl,
   canEdit,
 }: {
@@ -55,6 +56,7 @@ export default function CaseReviewNote({
   caseRow: Case;
   client: Client;
   documentItems: DocumentItem[];
+  documentSubItems: DocumentSubItem[];
   appUrl: string;
   canEdit: boolean;
 }) {
@@ -66,7 +68,7 @@ export default function CaseReviewNote({
   const initialState: UpdateReviewState = {};
   const [state, formAction, pending] = useActionState(updateCaseReview.bind(null, caseId), initialState);
 
-  const docGroups = useMemo(() => buildDocChecklistGroups(documentItems), [documentItems]);
+  const docGroups = useMemo(() => buildDocChecklistGroups(documentItems, documentSubItems), [documentItems, documentSubItems]);
 
   const previewCase: Case = {
     ...caseRow,
