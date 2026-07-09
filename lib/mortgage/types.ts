@@ -54,6 +54,8 @@ export interface IncomeEntry {
 
 export type DocStatus = "pending" | "received" | "missing";
 
+export type ExtractionStatus = "none" | "pending" | "done" | "unavailable";
+
 export interface DocumentItem {
   id: string;
   case_id: string;
@@ -62,6 +64,10 @@ export interface DocumentItem {
   status: DocStatus;
   received_at: string | null;
   notes: string | null;
+  file_path: string | null;
+  file_name: string | null;
+  ai_extracted_data: import("./extraction").DocumentExtraction | null;
+  ai_extraction_status: ExtractionStatus;
   created_at: string;
 }
 

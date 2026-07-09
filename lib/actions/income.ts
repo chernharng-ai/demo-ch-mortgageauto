@@ -101,3 +101,30 @@ export async function deleteIncomeEntry(entryId: string, caseId: string) {
   await supabase.from("income_entries").delete().eq("id", entryId);
   revalidatePath(`/cases/${caseId}`);
 }
+
+/** Confirms one AI-extracted income line (see lib/mortgage/extraction.ts) as a real income entry — officer-initiated, never automatic. */
+export async function addIncomeEntryFromExtraction(
+  caseId: string,
+  incomeType: IncomeType,
+  grossAmount: number,
+  frequency: "monthly" | "annual",
+  sourceLabel: string,
+) {
+  const user = await getCurrentUser();
+  const supabase = await createClient();
+
+  await supabase.from("income_entries").insert({
+    case_id: caseId,
+    user_id: user?.id ?? null,
+    income_type: incomeType,
+    gross_amount: grossAmount,
+    frequency,
+    supporting_doc: sourceLabel,
+    ai_suggested_type: incomeType,
+    ai_suggested_type_source: "claude_vision_extraction",
+    ai_suggested_type_confidence: null,
+    ai_suggested_type_review_status: "accepted",
+  });
+
+  revalidatePath(`/cases/${caseId}`);
+}
