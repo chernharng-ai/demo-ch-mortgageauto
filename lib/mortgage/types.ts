@@ -29,6 +29,9 @@ export interface Case {
   status: CaseStatus;
   property_value: number | null;
   loan_tenure_years: number;
+  applicant_type: "single" | "joint";
+  property_location: "urban" | "non_urban";
+  property_type: "completed" | "under_construction";
   notes: string | null;
   ai_summary: string | null;
   ai_summary_status: SummaryStatus;
@@ -122,15 +125,28 @@ export interface IncomeCalculation {
 }
 
 export type EligibilityStatus = "eligible" | "marginal" | "ineligible";
+export type FinancingPackage = "standard_90" | "sjkp_100";
+export type CappedBy = "dsr" | "ndi" | "spa_cap" | null;
 
 export interface LoanEligibility {
   id: string;
   case_id: string;
   bank_id: string;
+  package: FinancingPackage;
   max_loan_amount: number;
   monthly_instalment: number;
   dsr_ratio: number;
+  ndi_after: number | null;
+  capped_by: CappedBy;
   eligibility_status: EligibilityStatus;
+  created_at: string;
+}
+
+export interface CaseCommitment {
+  id: string;
+  case_id: string;
+  description: string;
+  monthly_amount: number;
   created_at: string;
 }
 

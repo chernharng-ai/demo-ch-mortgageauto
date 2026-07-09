@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import type { AuditLog as AuditLogRow, Bank, Case, CaseDocument, Client, DocumentItem, DocumentSubItem, IncomeCalculation, IncomeEntry, LoanEligibility } from "@/lib/mortgage/types";
+import type { AuditLog as AuditLogRow, Bank, Case, CaseCommitment, CaseDocument, Client, DocumentItem, DocumentSubItem, IncomeCalculation, IncomeEntry, LoanEligibility } from "@/lib/mortgage/types";
 import DocumentChecklist from "./DocumentChecklist";
 import IncomeEntries from "./IncomeEntries";
 import CalculationPanel from "./CalculationPanel";
@@ -11,6 +11,8 @@ import AuditLog from "./AuditLog";
 import DeleteCaseButton from "./DeleteCaseButton";
 import CaseSummary from "./CaseSummary";
 import CaseReviewNote from "./CaseReviewNote";
+import CommitmentsPanel from "./CommitmentsPanel";
+import CaseProfile from "./CaseProfile";
 
 export const dynamic = "force-dynamic";
 
@@ -38,6 +40,7 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ id:
     { data: auditLogs },
     { data: caseDocuments },
     { data: documentSubItems },
+    { data: caseCommitments },
   ] = await Promise.all([
     supabase.from("document_items").select("*").eq("case_id", id).order("doc_name").returns<DocumentItem[]>(),
     supabase.from("income_entries").select("*").eq("case_id", id).order("created_at").returns<IncomeEntry[]>(),
@@ -47,6 +50,7 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ id:
     supabase.from("audit_logs").select("*").eq("case_id", id).order("created_at", { ascending: false }).returns<AuditLogRow[]>(),
     supabase.from("case_documents").select("*").eq("case_id", id).order("created_at").returns<CaseDocument[]>(),
     supabase.from("document_sub_items").select("*").eq("case_id", id).order("sort_order").returns<DocumentSubItem[]>(),
+    supabase.from("case_commitments").select("*").eq("case_id", id).order("created_at").returns<CaseCommitment[]>(),
   ]);
 
   const client = caseRow.clients;
@@ -68,11 +72,13 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ id:
   }
   const signedCaseDocuments = rawCaseDocuments.map((d) => ({ ...d, signedUrl: signedUrls.get(d.file_path) ?? null }));
   const subItems = documentSubItems ?? [];
+  const commitments = caseCommitments ?? [];
   const total = docs.length;
   const received = docs.filter((d) => d.status === "received").length;
   const completeness = total > 0 ? Math.round((received / total) * 100) : 0;
   const bestOffer = [...eligibilities].sort((a, b) => b.max_loan_amount - a.max_loan_amount)[0];
   const bestBankName = bestOffer ? bankList.find((b) => b.id === bestOffer.bank_id)?.name : null;
+  const banksComparedCount = new Set(eligibilities.map((e) => e.bank_id)).size;
 
   return (
     <main className="min-h-screen p-6 sm:p-10 max-w-4xl mx-auto">
@@ -97,7 +103,7 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ id:
       <section className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-10">
         <Stat label="Doc Completeness" value={`${completeness}%`} />
         <Stat label="Income Lines" value={String(income.length)} />
-        <Stat label="Banks Compared" value={String(eligibilities.length)} />
+        <Stat label="Banks Compared" value={String(banksComparedCount)} />
         <Stat
           label="Highest Max Loan"
           value={bestOffer ? `RM ${Math.round(bestOffer.max_loan_amount).toLocaleString()} (${bestBankName})` : "—"}
@@ -117,6 +123,16 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ id:
       <section className="mb-10">
         <h2 className="text-sm font-semibold text-neutral-900 mb-3">Income Entries</h2>
         <IncomeEntries caseId={caseRow.id} entries={income} canEdit={canEdit} />
+      </section>
+
+      <section className="mb-10">
+        <h2 className="text-sm font-semibold text-neutral-900 mb-3">Case Profile</h2>
+        <CaseProfile caseId={caseRow.id} caseRow={caseRow} canEdit={canEdit} />
+      </section>
+
+      <section className="mb-10">
+        <h2 className="text-sm font-semibold text-neutral-900 mb-3">Existing Commitments</h2>
+        <CommitmentsPanel caseId={caseRow.id} commitments={commitments} canEdit={canEdit} />
       </section>
 
       <section className="mb-10">
