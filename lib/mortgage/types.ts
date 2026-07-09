@@ -21,6 +21,8 @@ export type CaseStatus = "draft" | "in-review" | "approved" | "rejected";
 
 export type SummaryStatus = "none" | "draft" | "accepted" | "dismissed";
 
+export type ReviewClientType = "business_owner" | "salary_earner";
+
 export interface Case {
   id: string;
   client_id: string;
@@ -30,6 +32,21 @@ export interface Case {
   notes: string | null;
   ai_summary: string | null;
   ai_summary_status: SummaryStatus;
+  review_client_type: ReviewClientType | null;
+  review_doc_link: string | null;
+  review_age: number | null;
+  review_residential_address: string | null;
+  review_working_address: string | null;
+  review_attention: string | null;
+  review_gross_income: string | null;
+  review_nett_income: string | null;
+  review_max_allowed_commitment: number | null;
+  review_commitment_breakdown: string | null;
+  review_project: string | null;
+  review_bank_eligible_notes: string | null;
+  review_risk_level: string | null;
+  review_approval_chance: number | null;
+  review_agent_notes: string | null;
   created_at: string;
 }
 

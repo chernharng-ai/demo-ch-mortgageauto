@@ -10,6 +10,7 @@ import CaseNotes from "./CaseNotes";
 import AuditLog from "./AuditLog";
 import DeleteCaseButton from "./DeleteCaseButton";
 import CaseSummary from "./CaseSummary";
+import CaseReviewNote from "./CaseReviewNote";
 
 export const dynamic = "force-dynamic";
 
@@ -121,6 +122,15 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ id:
       </section>
 
       <CaseSummary caseId={caseRow.id} summary={caseRow.ai_summary} status={caseRow.ai_summary_status} canEdit={canEdit} />
+
+      <CaseReviewNote
+        caseId={caseRow.id}
+        caseRow={caseRow}
+        client={client}
+        documentItems={docs}
+        appUrl={process.env.NEXT_PUBLIC_APP_URL ?? ""}
+        canEdit={canEdit}
+      />
 
       <section className="mb-10">
         <h2 className="text-sm font-semibold text-neutral-900 mb-3">Activity Log</h2>
