@@ -16,7 +16,8 @@ export default function NewCaseForm() {
       </Link>
       <h1 className="text-2xl font-bold tracking-tight mt-2 mb-1">New Case</h1>
       <p className="text-sm text-neutral-500 mb-8">
-        Create a client + case. A document checklist is generated automatically from each bank&apos;s requirements.
+        Create a client + case, then enter income details to review max loan eligibility across every configured
+        bank. A document checklist is generated automatically from each bank&apos;s requirements.
       </p>
 
       {state.error && (
@@ -69,28 +70,6 @@ export default function NewCaseForm() {
 
         <fieldset className="space-y-4">
           <legend className="text-sm font-semibold text-neutral-900">Case</legend>
-
-          <Field label="Property value (RM)" name="property_value" error={state.fieldErrors?.property_value}>
-            <input
-              type="number"
-              name="property_value"
-              min="0"
-              step="1000"
-              placeholder="550000"
-              className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-900"
-            />
-          </Field>
-
-          <Field label="Loan tenure (years)" name="loan_tenure_years">
-            <input
-              type="number"
-              name="loan_tenure_years"
-              min="1"
-              max="40"
-              defaultValue={30}
-              className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-900"
-            />
-          </Field>
 
           <Field label="Notes" name="notes">
             <textarea

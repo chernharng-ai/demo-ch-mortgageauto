@@ -6,10 +6,10 @@ export const dynamic = "force-dynamic";
 interface DashboardCase {
   id: string;
   status: string;
-  property_value: number | null;
   created_at: string;
   clients: { full_name: string; employment_type: string } | null;
   document_items: { status: string }[];
+  loan_eligibilities: { max_loan_amount: number }[];
 }
 
 const STATUS_STYLES: Record<string, string> = {
@@ -29,7 +29,7 @@ export default async function DashboardPage() {
 
   const { data: cases, error } = await supabase
     .from("cases")
-    .select("id, status, property_value, created_at, clients(full_name, employment_type), document_items(status)")
+    .select("id, status, created_at, clients(full_name, employment_type), document_items(status), loan_eligibilities(max_loan_amount)")
     .order("created_at", { ascending: false })
     .returns<DashboardCase[]>();
 
@@ -75,7 +75,7 @@ export default async function DashboardPage() {
               <tr>
                 <th className="px-4 py-3 font-medium">Client</th>
                 <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 font-medium">Property Value</th>
+                <th className="px-4 py-3 font-medium">Highest Max Loan</th>
                 <th className="px-4 py-3 font-medium">Docs Complete</th>
                 <th className="px-4 py-3 font-medium">Created</th>
               </tr>
@@ -85,6 +85,7 @@ export default async function DashboardPage() {
                 const total = c.document_items.length;
                 const received = c.document_items.filter((d) => d.status === "received").length;
                 const pct = total > 0 ? Math.round((received / total) * 100) : 0;
+                const highestMaxLoan = c.loan_eligibilities.length > 0 ? Math.max(...c.loan_eligibilities.map((e) => e.max_loan_amount)) : null;
                 return (
                   <tr key={c.id} className="border-t border-neutral-100 hover:bg-neutral-50">
                     <td className="px-4 py-3">
@@ -98,7 +99,7 @@ export default async function DashboardPage() {
                         {c.status}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-neutral-700">{formatMYR(c.property_value)}</td>
+                    <td className="px-4 py-3 text-neutral-700">{formatMYR(highestMaxLoan)}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         <div className="w-20 h-1.5 rounded-full bg-neutral-100 overflow-hidden">

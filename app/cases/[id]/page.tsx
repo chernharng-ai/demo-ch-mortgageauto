@@ -42,9 +42,12 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ id:
   const docs = documentItems ?? [];
   const income = incomeEntries ?? [];
   const bankList = banks ?? [];
+  const eligibilities = loanEligibilities ?? [];
   const total = docs.length;
   const received = docs.filter((d) => d.status === "received").length;
   const completeness = total > 0 ? Math.round((received / total) * 100) : 0;
+  const bestOffer = [...eligibilities].sort((a, b) => b.max_loan_amount - a.max_loan_amount)[0];
+  const bestBankName = bestOffer ? bankList.find((b) => b.id === bestOffer.bank_id)?.name : null;
 
   return (
     <main className="min-h-screen p-6 sm:p-10 max-w-4xl mx-auto">
@@ -67,10 +70,13 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ id:
       </div>
 
       <section className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-10">
-        <Stat label="Property Value" value={caseRow.property_value ? `RM ${caseRow.property_value.toLocaleString()}` : "—"} />
-        <Stat label="Loan Tenure" value={`${caseRow.loan_tenure_years} yrs`} />
         <Stat label="Doc Completeness" value={`${completeness}%`} />
         <Stat label="Income Lines" value={String(income.length)} />
+        <Stat label="Banks Compared" value={String(eligibilities.length)} />
+        <Stat
+          label="Highest Max Loan"
+          value={bestOffer ? `RM ${Math.round(bestOffer.max_loan_amount).toLocaleString()} (${bestBankName})` : "—"}
+        />
       </section>
 
       <section className="mb-10">

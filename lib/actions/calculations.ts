@@ -74,7 +74,10 @@ export async function runCalculations(
       .maybeSingle<LoanEligibility>();
 
     const eligibleIncome = computeEligibleIncome(incomeEntries, client.employment_type, calcParams.income_rules);
-    const result = computeLoanEligibility(eligibleIncome, caseRow.property_value, caseRow.loan_tenure_years, calcParams);
+    // Max eligibility review — always use each bank's own longest tenure, not a
+    // case-level default, so this reflects the true ceiling rather than an
+    // arbitrary shorter term.
+    const result = computeLoanEligibility(eligibleIncome, null, calcParams);
 
     // run_income_calculation: replace prior result for this case+bank
     await supabase.from("income_calculations").delete().eq("case_id", caseId).eq("bank_id", bank.id);
@@ -96,7 +99,6 @@ export async function runCalculations(
       max_loan_amount: result.max_loan_amount,
       monthly_instalment: result.monthly_instalment,
       dsr_ratio: result.dsr_ratio,
-      eligibility_status: result.eligibility_status,
     });
 
     await supabase.from("audit_logs").insert({
@@ -109,7 +111,6 @@ export async function runCalculations(
         bank: bank.name,
         eligible_income: eligibleIncome,
         max_loan_amount: result.max_loan_amount,
-        eligibility_status: result.eligibility_status,
       },
     });
   }

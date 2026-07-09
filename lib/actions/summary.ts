@@ -49,7 +49,6 @@ export async function generateSummary(caseId: string, _prevState: SummaryState):
         eligibleIncome: calc.eligible_income,
         maxLoanAmount: eligibility.max_loan_amount,
         dsrRatio: eligibility.dsr_ratio,
-        eligibilityStatus: eligibility.eligibility_status,
       };
     })
     .filter((r): r is NonNullable<typeof r> => r !== null);
@@ -57,7 +56,6 @@ export async function generateSummary(caseId: string, _prevState: SummaryState):
   const summary = generateCaseSummary({
     clientName: caseRow.clients.full_name,
     employmentType: caseRow.clients.employment_type,
-    propertyValue: caseRow.property_value,
     docCompleteness: completeness,
     results,
   });

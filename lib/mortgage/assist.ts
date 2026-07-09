@@ -45,14 +45,12 @@ export function isAnomalousAmount(amount: number, priorAmounts: number[]): boole
 export interface CaseSummaryInput {
   clientName: string;
   employmentType: string;
-  propertyValue: number | null;
   docCompleteness: number;
   results: {
     bankName: string;
     eligibleIncome: number;
     maxLoanAmount: number;
     dsrRatio: number;
-    eligibilityStatus: string;
   }[];
 }
 
@@ -65,20 +63,19 @@ export function generateCaseSummary(input: CaseSummaryInput): string {
   const { clientName, employmentType, docCompleteness, results } = input;
 
   if (results.length === 0) {
-    return `${clientName} (${employmentType}) has not yet had a calculation run. Add income entries and run the calculation to generate an eligibility summary.`;
+    return `${clientName} (${employmentType}) has not yet had a calculation run. Add income entries and run the calculation to rank max loan eligibility across every bank.`;
   }
 
-  const best = [...results].sort((a, b) => b.maxLoanAmount - a.maxLoanAmount)[0];
-  const eligibleBanks = results.filter((r) => r.eligibilityStatus === "eligible");
+  const ranked = [...results].sort((a, b) => b.maxLoanAmount - a.maxLoanAmount);
+  const best = ranked[0];
+  const worst = ranked[ranked.length - 1];
 
   const lines = [
     `${clientName} is ${employmentType} with an eligible income of ${formatMYR(best.eligibleIncome)}/month per ${best.bankName}'s method.`,
-    `The strongest offer is from ${best.bankName}: max loan ${formatMYR(best.maxLoanAmount)} at a ${(best.dsrRatio * 100).toFixed(1)}% DSR (${best.eligibilityStatus}).`,
-    eligibleBanks.length > 1
-      ? `${eligibleBanks.length} of ${results.length} configured banks currently show as eligible.`
-      : eligibleBanks.length === 1
-        ? `Only ${eligibleBanks[0].bankName} currently shows as eligible.`
-        : `No bank currently shows as eligible at the requested property value — consider a lower-value property or additional income.`,
+    `Highest max loan eligibility is with ${best.bankName}: ${formatMYR(best.maxLoanAmount)} at a ${(best.dsrRatio * 100).toFixed(1)}% DSR.`,
+    ranked.length > 1
+      ? `Compared across ${ranked.length} banks, eligibility ranges from ${formatMYR(worst.maxLoanAmount)} (${worst.bankName}) to ${formatMYR(best.maxLoanAmount)} (${best.bankName}).`
+      : `Only ${best.bankName} was compared.`,
     docCompleteness < 100
       ? `Document checklist is ${docCompleteness}% complete — chase outstanding items before submission.`
       : `Document checklist is fully complete.`,

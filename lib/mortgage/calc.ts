@@ -37,10 +37,6 @@ export interface IncomeEntryLike {
   frequency: string;
 }
 
-// Typical Malaysian bank margin-of-finance ceiling. Not stored per-bank in v1;
-// applied uniformly so "max loan" is bounded by what the property can support.
-export const MARGIN_OF_FINANCE = 0.9;
-
 function normalizeEmploymentType(employmentType: string): string {
   return employmentType.replace(/-/g, "_");
 }
@@ -67,19 +63,17 @@ export interface LoanEligibilityResult {
   max_loan_amount: number;
   monthly_instalment: number;
   dsr_ratio: number;
-  eligibility_status: "eligible" | "marginal" | "ineligible";
-  requested_loan_amount: number;
 }
 
 /**
- * Max loan a bank will finance, stress-tested at bank's stress_rate, capped by
- * both the DSR limit (income affordability) and margin-of-finance on the
- * property value (what's actually being requested).
+ * Max loan a bank will finance for this income, stress-tested at the bank's
+ * stress_rate over its longest available tenure — a pure affordability
+ * ceiling, not tied to any specific property. This is the headline number
+ * for "review all banks' max eligibility," not a yes/no on a target loan.
  */
 export function computeLoanEligibility(
   eligibleIncome: number,
-  propertyValue: number | null,
-  loanTenureYears: number,
+  loanTenureYears: number | null,
   calcParams: BankCalcParams,
 ): LoanEligibilityResult {
   const dsrLimit = resolveDsrLimit(eligibleIncome, calcParams) ?? 0;
@@ -90,28 +84,14 @@ export function computeLoanEligibility(
 
   const pvFactor = r === 0 ? n : (1 - Math.pow(1 + r, -n)) / r;
   const affordableInstalment = eligibleIncome * dsrLimit;
-  const dsrCappedLoan = affordableInstalment * pvFactor;
-
-  const requestedLoanAmount = propertyValue ? propertyValue * MARGIN_OF_FINANCE : dsrCappedLoan;
-  const maxLoanAmount = Math.max(0, Math.min(dsrCappedLoan, requestedLoanAmount));
-  const monthlyInstalment = maxLoanAmount / pvFactor;
+  const maxLoanAmount = Math.max(0, affordableInstalment * pvFactor);
+  const monthlyInstalment = affordableInstalment;
   const dsrRatio = eligibleIncome > 0 ? monthlyInstalment / eligibleIncome : 0;
-
-  let eligibilityStatus: LoanEligibilityResult["eligibility_status"];
-  if (dsrCappedLoan >= requestedLoanAmount) {
-    eligibilityStatus = "eligible";
-  } else if (dsrCappedLoan >= requestedLoanAmount * 0.95) {
-    eligibilityStatus = "marginal";
-  } else {
-    eligibilityStatus = "ineligible";
-  }
 
   return {
     max_loan_amount: round2(maxLoanAmount),
     monthly_instalment: round2(monthlyInstalment),
     dsr_ratio: round4(dsrRatio),
-    eligibility_status: eligibilityStatus,
-    requested_loan_amount: round2(requestedLoanAmount),
   };
 }
 

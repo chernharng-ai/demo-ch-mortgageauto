@@ -25,19 +25,10 @@ export async function createCase(
   const icNumber = String(formData.get("ic_number") ?? "").trim();
   const employmentType = String(formData.get("employment_type") ?? "employed");
   const employerName = String(formData.get("employer_name") ?? "").trim();
-  const propertyValueRaw = String(formData.get("property_value") ?? "").trim();
-  const loanTenureRaw = String(formData.get("loan_tenure_years") ?? "30").trim();
   const notes = String(formData.get("notes") ?? "").trim();
 
   const fieldErrors: Record<string, string> = {};
   if (!fullName) fieldErrors.full_name = "Client name is required.";
-
-  const propertyValue = propertyValueRaw ? Number(propertyValueRaw) : null;
-  if (propertyValueRaw && (Number.isNaN(propertyValue) || (propertyValue ?? 0) < 0)) {
-    fieldErrors.property_value = "Enter a valid property value.";
-  }
-
-  const loanTenureYears = Number(loanTenureRaw) || 30;
 
   if (Object.keys(fieldErrors).length > 0) {
     return { fieldErrors };
@@ -67,8 +58,6 @@ export async function createCase(
       user_id: user?.id ?? null,
       client_id: client.id,
       status: "draft",
-      property_value: propertyValue,
-      loan_tenure_years: loanTenureYears,
       notes: notes || null,
     })
     .select("id")
