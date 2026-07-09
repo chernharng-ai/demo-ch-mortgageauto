@@ -8,12 +8,20 @@
 // bank is evaluated at up to two financing packages: the standard 90%
 // margin, and (where the bank offers it) 100%/SJKP financing, which usually
 // carries its own DSR tiers, NDI floor, and income/SPA caps.
+//
+// Some banks' DSR brackets are keyed on gross monthly income, others on
+// nett-of-tax (post-PCB, post-EPF) income — see `income_basis`. NDI always
+// uses nett income regardless, since "disposable income" is inherently a
+// take-home-cash concept.
+
+import { computeNettIncome } from "./pcb";
 
 export type IncomeRules = Record<string, Record<string, number>>;
 export type ApplicantType = "single" | "joint";
 export type PropertyLocation = "urban" | "non_urban";
 export type PropertyType = "completed" | "under_construction";
 export type FinancingPackage = "standard_90" | "sjkp_100";
+export type IncomeBasis = "gross" | "nett";
 
 /** One income bracket: applies `dsr` when monthly eligible income <= `max` (null = "and above"). */
 export interface DsrTier {
@@ -46,6 +54,8 @@ export interface BankCalcParams {
   dsr_tiers?: DsrTier[];
   dsr_tiers_non_urban?: DsrTier[];
   dsr_tiers_under_construction?: DsrTier[];
+  /** Whether this bank's DSR brackets key on gross or nett-of-tax monthly income. Defaults to "gross" when unset (source guideline didn't label it). */
+  income_basis?: IncomeBasis;
   ndi_floor?: NdiFloor;
   sjkp?: SjkpParams;
   stress_rate: number;
@@ -123,6 +133,29 @@ export function computeEligibleIncome(
   return round2(total);
 }
 
+/**
+ * Nett-basis eligible income — same bank multipliers, but the "basic" salary
+ * component is converted gross→nett via PCB first (matching what a payslip's
+ * Net Pay actually shows). Other income types (rental, commission, business,
+ * etc.) aren't subject to employer payroll tax withholding, so they're left
+ * as-is. Used for banks whose DSR brackets are nett-labeled, and always for
+ * the NDI check regardless of a bank's DSR basis.
+ */
+export function computeNettEligibleIncome(
+  entries: IncomeEntryLike[],
+  employmentType: string,
+  incomeRules: IncomeRules,
+): number {
+  const rules = incomeRules[normalizeEmploymentType(employmentType)] ?? {};
+  const total = entries.reduce((sum, entry) => {
+    const multiplier = rules[entry.income_type] ?? 0;
+    const monthly = monthlyAmount(entry);
+    const baseAmount = entry.income_type === "basic" ? computeNettIncome(monthly).nettMonthlyIncome : monthly;
+    return sum + baseAmount * multiplier;
+  }, 0);
+  return round2(total);
+}
+
 function affordabilityToLoan(instalment: number, stressRate: number, tenureYears: number): number {
   const n = tenureYears * 12;
   const r = stressRate / 12;
@@ -142,13 +175,16 @@ export interface PackageEligibilityResult {
 
 /**
  * Max loan a bank will finance for this income + package, stress-tested at
- * the bank's stress_rate over its longest available tenure. DSR and NDI are
- * both checked; whichever ceiling permits the smaller instalment wins (per
- * the officer's underwriting rule: "take whichever lower"). Not tied to any
- * specific property — this is the headline affordability ceiling.
+ * the bank's stress_rate over its longest available tenure. DSR uses
+ * whichever income basis the bank's brackets are keyed on (gross or nett);
+ * NDI always uses nett income. Both are checked; whichever ceiling permits
+ * the smaller instalment wins (per the officer's underwriting rule: "take
+ * whichever lower"). Not tied to any specific property — this is the
+ * headline affordability ceiling.
  */
 export function computePackageEligibility(
-  eligibleIncome: number,
+  grossEligibleIncome: number,
+  nettEligibleIncome: number,
   existingCommitments: number,
   applicantType: ApplicantType,
   propertyLocation: PropertyLocation,
@@ -168,10 +204,11 @@ export function computePackageEligibility(
 
   const maxTenure = calcParams.tenure_max_years ?? 35;
   const sjkp = calcParams.sjkp;
+  const dsrBaseIncome = calcParams.income_basis === "nett" ? nettEligibleIncome : grossEligibleIncome;
 
   if (pkg === "sjkp_100") {
     if (!sjkp || !sjkp.available) return notAvailable("Bank does not offer 100%/SJKP financing.");
-    if (sjkp.max_income != null && eligibleIncome > sjkp.max_income) {
+    if (sjkp.max_income != null && dsrBaseIncome > sjkp.max_income) {
       return notAvailable(`Income exceeds this bank's SJKP cap of RM ${sjkp.max_income.toLocaleString()}.`);
     }
   }
@@ -183,25 +220,25 @@ export function computePackageEligibility(
     // Two-pass: try the above-300k rate, see if the resulting loan (== implied
     // price at 100% margin) actually clears 300k; otherwise use the below-300k rate.
     const aboveDsr = sjkp.dsr_tiers_by_property_price.above_300k;
-    const trialInstalment = Math.max(0, eligibleIncome * aboveDsr - existingCommitments);
+    const trialInstalment = Math.max(0, dsrBaseIncome * aboveDsr - existingCommitments);
     const trialLoan = affordabilityToLoan(trialInstalment, calcParams.stress_rate, maxTenure);
     dsrLimit = trialLoan > 300000 ? aboveDsr : sjkp.dsr_tiers_by_property_price.below_300k;
     propertyPriceHint = trialLoan;
   } else if (pkg === "sjkp_100") {
     const tiers = sjkp?.dsr_tiers ?? pickDsrTiers(calcParams, propertyType, propertyLocation);
-    dsrLimit = resolveDsrLimit(eligibleIncome, tiers, calcParams.dsr_limit);
+    dsrLimit = resolveDsrLimit(dsrBaseIncome, tiers, calcParams.dsr_limit);
   } else {
     const tiers = pickDsrTiers(calcParams, propertyType, propertyLocation);
-    dsrLimit = resolveDsrLimit(eligibleIncome, tiers, calcParams.dsr_limit);
+    dsrLimit = resolveDsrLimit(dsrBaseIncome, tiers, calcParams.dsr_limit);
   }
 
   if (dsrLimit == null) return notAvailable("No DSR configuration for this bank.");
 
-  const dsrCappedInstalment = Math.max(0, eligibleIncome * dsrLimit - existingCommitments);
+  const dsrCappedInstalment = Math.max(0, dsrBaseIncome * dsrLimit - existingCommitments);
 
   const ndiSource = pkg === "sjkp_100" && sjkp?.ndi_floor ? sjkp.ndi_floor : calcParams.ndi_floor;
   const ndiFloor = resolveNdiFloor(ndiSource, applicantType, propertyLocation, propertyPriceHint);
-  const ndiCappedInstalment = ndiFloor != null ? Math.max(0, eligibleIncome - existingCommitments - ndiFloor) : Infinity;
+  const ndiCappedInstalment = ndiFloor != null ? Math.max(0, nettEligibleIncome - existingCommitments - ndiFloor) : Infinity;
 
   const cappedByDsrOrNdi: "dsr" | "ndi" = ndiCappedInstalment < dsrCappedInstalment ? "ndi" : "dsr";
   const affordableInstalment = Math.min(dsrCappedInstalment, ndiCappedInstalment);
@@ -221,8 +258,8 @@ export function computePackageEligibility(
     cappedBy = "spa_cap";
   }
 
-  const ndiAfter = eligibleIncome - existingCommitments - finalInstalment;
-  const dsrRatio = eligibleIncome > 0 ? (existingCommitments + finalInstalment) / eligibleIncome : 0;
+  const ndiAfter = nettEligibleIncome - existingCommitments - finalInstalment;
+  const dsrRatio = dsrBaseIncome > 0 ? (existingCommitments + finalInstalment) / dsrBaseIncome : 0;
 
   return {
     available: true,

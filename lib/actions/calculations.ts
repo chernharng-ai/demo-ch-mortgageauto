@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser } from "@/lib/supabase/profile";
-import { computeEligibleIncome, computePackageEligibility, type BankCalcParams, type FinancingPackage } from "@/lib/mortgage/calc";
+import { computeEligibleIncome, computeNettEligibleIncome, computePackageEligibility, type BankCalcParams, type FinancingPackage } from "@/lib/mortgage/calc";
 import type { Bank, Case, CaseCommitment, Client, IncomeEntry, LoanEligibility } from "@/lib/mortgage/types";
 
 export interface RunCalculationState {
@@ -61,6 +61,7 @@ export async function runCalculations(
     }
 
     const eligibleIncome = computeEligibleIncome(incomeEntries, client.employment_type, calcParams.income_rules);
+    const nettEligibleIncome = computeNettEligibleIncome(incomeEntries, client.employment_type, calcParams.income_rules);
 
     await supabase.from("income_calculations").delete().eq("case_id", caseId).eq("bank_id", bank.id);
     await supabase.from("income_calculations").insert({
@@ -68,7 +69,7 @@ export async function runCalculations(
       user_id: user?.id ?? null,
       bank_id: bank.id,
       eligible_income: eligibleIncome,
-      method_snapshot: { bank: bank.name, ...calcParams },
+      method_snapshot: { bank: bank.name, nett_eligible_income: nettEligibleIncome, ...calcParams },
       calculated_by: calculatedBy,
     });
 
@@ -83,6 +84,7 @@ export async function runCalculations(
 
       const result = computePackageEligibility(
         eligibleIncome,
+        nettEligibleIncome,
         existingCommitments,
         caseRow.applicant_type,
         caseRow.property_location,
@@ -117,6 +119,7 @@ export async function runCalculations(
           bank: bank.name,
           package: pkg,
           eligible_income: eligibleIncome,
+          nett_eligible_income: nettEligibleIncome,
           existing_commitments: existingCommitments,
           max_loan_amount: result.max_loan_amount,
           capped_by: result.capped_by,
