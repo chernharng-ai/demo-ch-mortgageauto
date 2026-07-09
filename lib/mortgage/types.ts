@@ -71,6 +71,19 @@ export interface DocumentItem {
   created_at: string;
 }
 
+export interface CaseDocument {
+  id: string;
+  case_id: string;
+  file_path: string;
+  file_name: string;
+  original_file_name: string;
+  mime_type: string | null;
+  matched_doc_name: string | null;
+  ai_extracted_data: import("./extraction").DocumentExtraction | null;
+  ai_extraction_status: ExtractionStatus;
+  created_at: string;
+}
+
 export interface IncomeCalculation {
   id: string;
   case_id: string;

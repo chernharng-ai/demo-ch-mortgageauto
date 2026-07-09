@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useTransition } from "react";
+import { useActionState, useState, useTransition } from "react";
 import { generateSummary, setSummaryStatus, type SummaryState } from "@/lib/actions/summary";
 
 const STATUS_LABEL: Record<string, string> = {
@@ -23,6 +23,15 @@ export default function CaseSummary({
   const initialState: SummaryState = {};
   const [state, formAction, pending] = useActionState(generateSummary.bind(null, caseId), initialState);
   const [isPending, startTransition] = useTransition();
+  const [copied, setCopied] = useState(false);
+
+  function handleCopy() {
+    if (!summary) return;
+    navigator.clipboard.writeText(summary).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
 
   if (!canEdit && !summary) {
     return null;
@@ -36,6 +45,13 @@ export default function CaseSummary({
         <div className="rounded-md border border-neutral-200 bg-neutral-50 p-3">
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-medium text-neutral-500">{STATUS_LABEL[status] ?? status}</span>
+            <button
+              type="button"
+              onClick={handleCopy}
+              className="text-xs rounded-md border border-neutral-300 px-2 py-1 font-medium hover:bg-neutral-100"
+            >
+              {copied ? "Copied!" : "Copy"}
+            </button>
           </div>
           <p className="text-sm text-neutral-800">{summary}</p>
           {canEdit && status === "draft" && (

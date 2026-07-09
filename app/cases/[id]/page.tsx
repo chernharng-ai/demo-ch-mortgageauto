@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import type { AuditLog as AuditLogRow, Bank, Case, Client, DocumentItem, IncomeCalculation, IncomeEntry, LoanEligibility } from "@/lib/mortgage/types";
+import type { AuditLog as AuditLogRow, Bank, Case, CaseDocument, Client, DocumentItem, IncomeCalculation, IncomeEntry, LoanEligibility } from "@/lib/mortgage/types";
 import DocumentChecklist from "./DocumentChecklist";
 import IncomeEntries from "./IncomeEntries";
 import CalculationPanel from "./CalculationPanel";
@@ -28,7 +28,7 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ id:
     notFound();
   }
 
-  const [{ data: documentItems }, { data: incomeEntries }, { data: banks }, { data: incomeCalculations }, { data: loanEligibilities }, { data: auditLogs }] =
+  const [{ data: documentItems }, { data: incomeEntries }, { data: banks }, { data: incomeCalculations }, { data: loanEligibilities }, { data: auditLogs }, { data: caseDocuments }] =
     await Promise.all([
       supabase.from("document_items").select("*").eq("case_id", id).order("doc_name").returns<DocumentItem[]>(),
       supabase.from("income_entries").select("*").eq("case_id", id).order("created_at").returns<IncomeEntry[]>(),
@@ -36,6 +36,7 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ id:
       supabase.from("income_calculations").select("*").eq("case_id", id).returns<IncomeCalculation[]>(),
       supabase.from("loan_eligibilities").select("*").eq("case_id", id).returns<LoanEligibility[]>(),
       supabase.from("audit_logs").select("*").eq("case_id", id).order("created_at", { ascending: false }).returns<AuditLogRow[]>(),
+      supabase.from("case_documents").select("*").eq("case_id", id).order("created_at").returns<CaseDocument[]>(),
     ]);
 
   const client = caseRow.clients;
@@ -43,6 +44,19 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ id:
   const income = incomeEntries ?? [];
   const bankList = banks ?? [];
   const eligibilities = loanEligibilities ?? [];
+  const rawCaseDocuments = caseDocuments ?? [];
+
+  let signedUrls = new Map<string, string | null>();
+  if (rawCaseDocuments.length > 0) {
+    const { data: signed } = await supabase.storage
+      .from("client-documents")
+      .createSignedUrls(
+        rawCaseDocuments.map((d) => d.file_path),
+        3600,
+      );
+    signedUrls = new Map((signed ?? []).map((s) => [s.path ?? "", s.signedUrl]));
+  }
+  const signedCaseDocuments = rawCaseDocuments.map((d) => ({ ...d, signedUrl: signedUrls.get(d.file_path) ?? null }));
   const total = docs.length;
   const received = docs.filter((d) => d.status === "received").length;
   const completeness = total > 0 ? Math.round((received / total) * 100) : 0;
@@ -86,7 +100,7 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ id:
 
       <section className="mb-10">
         <h2 className="text-sm font-semibold text-neutral-900 mb-3">Document Checklist</h2>
-        <DocumentChecklist caseId={caseRow.id} items={docs} banks={bankList} canEdit={canEdit} />
+        <DocumentChecklist caseId={caseRow.id} items={docs} caseDocuments={signedCaseDocuments} canEdit={canEdit} />
       </section>
 
       <section className="mb-10">
