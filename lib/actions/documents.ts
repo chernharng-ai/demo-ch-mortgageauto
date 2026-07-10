@@ -124,6 +124,56 @@ export async function bulkUploadDocuments(caseId: string, formData: FormData): P
   return results;
 }
 
+/** Re-runs AI classification + extraction on a file already in storage — no re-upload needed, e.g. after a fix to the extraction pipeline. */
+export async function retryExtraction(caseDocumentId: string, caseId: string) {
+  const supabase = await createClient();
+
+  const [{ data: caseDoc }, { data: items }] = await Promise.all([
+    supabase.from("case_documents").select("file_path, mime_type, original_file_name").eq("id", caseDocumentId).single(),
+    supabase.from("document_items").select("doc_name").eq("case_id", caseId),
+  ]);
+
+  if (!caseDoc) return;
+
+  const candidateDocNames = [...new Set((items ?? []).map((i) => i.doc_name))];
+
+  const { data: blob, error: downloadError } = await supabase.storage.from("client-documents").download(caseDoc.file_path);
+  if (downloadError || !blob) return;
+
+  const buffer = Buffer.from(await blob.arrayBuffer());
+  const mimeType = caseDoc.mime_type || guessMimeTypeFromFileName(caseDoc.original_file_name);
+
+  let extraction: DocumentExtraction | null = null;
+  try {
+    extraction = await extractDocumentData(buffer, mimeType, candidateDocNames);
+  } catch (err) {
+    console.error(`Retry extraction failed for "${caseDoc.original_file_name}" (${mimeType}):`, err);
+    extraction = null;
+  }
+
+  const matchedDocName = extraction?.matched_doc_name ?? classifyByFilename(caseDoc.original_file_name, candidateDocNames);
+
+  await supabase
+    .from("case_documents")
+    .update({
+      matched_doc_name: matchedDocName,
+      ai_extracted_data: extraction,
+      ai_extraction_status: extraction ? "done" : "unavailable",
+    })
+    .eq("id", caseDocumentId);
+
+  if (matchedDocName) {
+    await supabase
+      .from("document_items")
+      .update({ status: "received", received_at: new Date().toISOString() })
+      .eq("case_id", caseId)
+      .eq("doc_name", matchedDocName);
+  }
+
+  revalidatePath(`/cases/${caseId}`);
+  revalidatePath("/");
+}
+
 /** Officer manually assigns a file the AI couldn't classify to a checklist item. */
 export async function assignDocumentMatch(caseDocumentId: string, caseId: string, docName: string) {
   const supabase = await createClient();

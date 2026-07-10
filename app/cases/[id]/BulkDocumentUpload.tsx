@@ -2,20 +2,7 @@
 
 import { useRef, useState, useTransition } from "react";
 import { bulkUploadDocuments, type BulkUploadResult } from "@/lib/actions/documents";
-import { addIncomeEntryFromExtraction } from "@/lib/actions/income";
-
-const INCOME_TYPE_LABEL: Record<string, string> = {
-  basic: "Basic salary",
-  allowance: "Allowance",
-  commission: "Commission",
-  rental: "Rental income",
-  net_profit: "Net profit",
-  other: "Other",
-};
-
-function formatMYR(n: number) {
-  return new Intl.NumberFormat("en-MY", { style: "currency", currency: "MYR", maximumFractionDigits: 0 }).format(n);
-}
+import ExtractionSummary from "./ExtractionSummary";
 
 export default function BulkDocumentUpload({ caseId, candidateDocNames }: { caseId: string; candidateDocNames: string[] }) {
   const [isDragging, setIsDragging] = useState(false);
@@ -73,8 +60,6 @@ export default function BulkDocumentUpload({ caseId, candidateDocNames }: { case
 }
 
 function ResultRow({ caseId, result, candidateDocNames }: { caseId: string; result: BulkUploadResult; candidateDocNames: string[] }) {
-  const [isAdding, startAdding] = useTransition();
-
   return (
     <li className="rounded-md border border-neutral-200 p-2 text-xs">
       <div className="flex items-center justify-between gap-2">
@@ -87,31 +72,7 @@ function ResultRow({ caseId, result, candidateDocNames }: { caseId: string; resu
           <span className="text-amber-700">Uploaded — couldn&apos;t match ({candidateDocNames.length} checklist items to choose from below)</span>
         )}
       </div>
-      {result.extraction && result.extraction.detected_income.length > 0 && (
-        <ul className="mt-1.5 space-y-1">
-          {result.extraction.detected_income.map((line, j) => (
-            <li key={j} className="flex items-center justify-between gap-2 bg-neutral-50 rounded border border-neutral-200 px-2 py-1">
-              <span>
-                {INCOME_TYPE_LABEL[line.income_type] ?? line.income_type} — {formatMYR(line.gross_amount)} / {line.frequency}{" "}
-                <span className="text-neutral-400">({Math.round(line.confidence * 100)}% confidence)</span>
-              </span>
-              <button
-                type="button"
-                disabled={isAdding}
-                onClick={() =>
-                  startAdding(() =>
-                    addIncomeEntryFromExtraction(caseId, line.income_type, line.gross_amount, line.frequency, `Extracted from ${result.originalFileName}`),
-                  )
-                }
-                className="text-neutral-900 underline font-medium whitespace-nowrap disabled:opacity-40"
-              >
-                Add
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-      {result.extraction?.notes && <p className="text-amber-700 mt-1">⚠ {result.extraction.notes}</p>}
+      {result.extraction && <ExtractionSummary caseId={caseId} extraction={result.extraction} sourceLabel={result.originalFileName} />}
     </li>
   );
 }

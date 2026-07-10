@@ -1,10 +1,11 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
-import { resetDocumentGroupStatus, assignDocumentMatch, addChecklistItem, deleteChecklistItem } from "@/lib/actions/documents";
+import { resetDocumentGroupStatus, assignDocumentMatch, addChecklistItem, deleteChecklistItem, retryExtraction } from "@/lib/actions/documents";
 import { addSubItem, setSubItemStatus, deleteSubItem } from "@/lib/actions/subItems";
 import type { CaseDocument, DocStatus, DocumentItem, DocumentSubItem } from "@/lib/mortgage/types";
 import BulkDocumentUpload from "./BulkDocumentUpload";
+import ExtractionSummary from "./ExtractionSummary";
 
 type SignedCaseDocument = CaseDocument & { signedUrl: string | null };
 
@@ -13,7 +14,7 @@ interface DocGroup {
   status: DocStatus;
   bankCount: number;
   isCustom: boolean;
-  document: SignedCaseDocument | null;
+  documents: SignedCaseDocument[];
   subItems: DocumentSubItem[];
 }
 
@@ -40,14 +41,14 @@ export default function DocumentChecklist({
 
   const groups: DocGroup[] = candidateDocNames.map((docName) => {
     const groupItems = items.filter((i) => i.doc_name === docName);
-    const document = [...caseDocuments].reverse().find((d) => d.matched_doc_name === docName) ?? null;
+    const documents = caseDocuments.filter((d) => d.matched_doc_name === docName);
     const groupSubItems = subItems.filter((s) => s.doc_name === docName).sort((a, b) => a.sort_order - b.sort_order);
     return {
       docName,
       status: groupItems[0]?.status ?? "pending",
       bankCount: groupItems.length,
       isCustom: groupItems.every((i) => i.bank_id === null),
-      document,
+      documents,
       subItems: groupSubItems,
     };
   });
@@ -144,20 +145,43 @@ function DocRow({ caseId, group, canEdit }: { caseId: string; group: DocGroup; c
           </div>
         )}
       </div>
-      {group.document && (
-        <p className="text-xs text-neutral-400 mt-1">
-          {group.document.signedUrl ? (
-            <a href={group.document.signedUrl} target="_blank" rel="noreferrer" className="underline hover:text-neutral-600">
-              {group.document.file_name}
-            </a>
-          ) : (
-            group.document.file_name
-          )}
-        </p>
+      {group.documents.length > 0 && (
+        <ul className="mt-1 space-y-1">
+          {group.documents.map((doc) => (
+            <li key={doc.id} className="text-xs text-neutral-400">
+              <div className="flex items-center gap-2">
+                {doc.signedUrl ? (
+                  <a href={doc.signedUrl} target="_blank" rel="noreferrer" className="underline hover:text-neutral-600">
+                    {doc.file_name}
+                  </a>
+                ) : (
+                  <span>{doc.file_name}</span>
+                )}
+                {canEdit && doc.ai_extraction_status !== "done" && <RetryButton caseId={caseId} caseDocumentId={doc.id} />}
+              </div>
+              {doc.ai_extracted_data && <ExtractionSummary caseId={caseId} extraction={doc.ai_extracted_data} sourceLabel={doc.original_file_name} />}
+            </li>
+          ))}
+        </ul>
       )}
 
       <SubItems caseId={caseId} docName={group.docName} subItems={group.subItems} canEdit={canEdit} />
     </li>
+  );
+}
+
+function RetryButton({ caseId, caseDocumentId }: { caseId: string; caseDocumentId: string }) {
+  const [isPending, startTransition] = useTransition();
+
+  return (
+    <button
+      type="button"
+      disabled={isPending}
+      onClick={() => startTransition(() => retryExtraction(caseDocumentId, caseId))}
+      className="text-neutral-500 underline hover:text-neutral-800 disabled:opacity-40 whitespace-nowrap"
+    >
+      {isPending ? "Reading…" : "Retry AI reading"}
+    </button>
   );
 }
 
@@ -278,34 +302,38 @@ function UnmatchedRow({
   const [isPending, startTransition] = useTransition();
 
   return (
-    <li className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 flex items-center justify-between gap-3">
-      <span className="text-sm text-neutral-800">
-        {doc.signedUrl ? (
-          <a href={doc.signedUrl} target="_blank" rel="noreferrer" className="underline">
-            {doc.original_file_name}
-          </a>
-        ) : (
-          doc.original_file_name
-        )}
-      </span>
-      <select
-        disabled={isPending}
-        defaultValue=""
-        onChange={(e) => {
-          const docName = e.target.value;
-          if (docName) startTransition(() => assignDocumentMatch(doc.id, caseId, docName));
-        }}
-        className="text-xs rounded border border-neutral-300 px-2 py-1"
-      >
-        <option value="" disabled>
-          Assign to…
-        </option>
-        {candidateDocNames.map((n) => (
-          <option key={n} value={n}>
-            {n}
+    <li className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-sm text-neutral-800 flex items-center gap-2">
+          {doc.signedUrl ? (
+            <a href={doc.signedUrl} target="_blank" rel="noreferrer" className="underline">
+              {doc.original_file_name}
+            </a>
+          ) : (
+            doc.original_file_name
+          )}
+          {doc.ai_extraction_status !== "done" && <RetryButton caseId={caseId} caseDocumentId={doc.id} />}
+        </span>
+        <select
+          disabled={isPending}
+          defaultValue=""
+          onChange={(e) => {
+            const docName = e.target.value;
+            if (docName) startTransition(() => assignDocumentMatch(doc.id, caseId, docName));
+          }}
+          className="text-xs rounded border border-neutral-300 px-2 py-1"
+        >
+          <option value="" disabled>
+            Assign to…
           </option>
-        ))}
-      </select>
+          {candidateDocNames.map((n) => (
+            <option key={n} value={n}>
+              {n}
+            </option>
+          ))}
+        </select>
+      </div>
+      {doc.ai_extracted_data && <ExtractionSummary caseId={caseId} extraction={doc.ai_extracted_data} sourceLabel={doc.original_file_name} />}
     </li>
   );
 }
