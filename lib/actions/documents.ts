@@ -13,6 +13,20 @@ export interface BulkUploadResult {
   error?: string;
 }
 
+const EXTENSION_MIME_TYPES: Record<string, string> = {
+  pdf: "application/pdf",
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  webp: "image/webp",
+  gif: "image/gif",
+};
+
+function guessMimeTypeFromFileName(fileName: string): string {
+  const ext = fileName.split(".").pop()?.toLowerCase();
+  return (ext && EXTENSION_MIME_TYPES[ext]) || "application/octet-stream";
+}
+
 /**
  * Drop-zone entry point: takes every file dropped on a case at once, and for
  * each one — uploads it to storage, renames it, asks Claude to classify +
@@ -45,12 +59,16 @@ export async function bulkUploadDocuments(caseId: string, formData: FormData): P
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
-    const mimeType = file.type || "application/octet-stream";
+    // Drag-and-drop doesn't always populate File.type reliably — fall back to
+    // the extension so a PDF/image dropped without a browser-detected MIME
+    // type still reaches the vision API instead of silently skipping it.
+    const mimeType = file.type || guessMimeTypeFromFileName(file.name);
 
     let extraction: DocumentExtraction | null = null;
     try {
       extraction = await extractDocumentData(buffer, mimeType, candidateDocNames);
-    } catch {
+    } catch (err) {
+      console.error(`Document extraction failed for "${file.name}" (${mimeType}):`, err);
       extraction = null;
     }
 

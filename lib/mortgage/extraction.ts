@@ -52,9 +52,8 @@ function buildExtractionSchema(candidateDocNames: string[]) {
       client_name_on_document: { type: ["string", "null"] },
       notes: { type: ["string", "null"], description: "Anything the officer should double-check, e.g. blurry, multiple months shown, figures don't add up." },
       matched_doc_name: {
-        type: ["string", "null"],
         description: "Which checklist item this document satisfies, chosen from the candidate list. Null if none fit.",
-        enum: [...candidateDocNames, null],
+        anyOf: [{ type: "string", enum: candidateDocNames }, { type: "null" }],
       },
     },
     required: ["document_type", "detected_income", "employer_name", "client_name_on_document", "notes", "matched_doc_name"],
