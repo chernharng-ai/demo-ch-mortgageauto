@@ -159,7 +159,14 @@ function DocRow({ caseId, group, canEdit }: { caseId: string; group: DocGroup; c
                 )}
                 {canEdit && doc.ai_extraction_status !== "done" && <RetryButton caseId={caseId} caseDocumentId={doc.id} />}
               </div>
-              {doc.ai_extracted_data && <ExtractionSummary caseId={caseId} extraction={doc.ai_extracted_data} sourceLabel={doc.original_file_name} />}
+              {doc.ai_extracted_data && (doc.ai_extracted_data.detected_income.length > 0 || doc.ai_extracted_data.notes) && (
+                <details className="mt-0.5">
+                  <summary className="cursor-pointer text-neutral-400 hover:text-neutral-600 select-none">
+                    AI reading{doc.ai_extracted_data.detected_income.length > 0 ? ` (${doc.ai_extracted_data.detected_income.length} income lines)` : ""}
+                  </summary>
+                  <ExtractionSummary caseId={caseId} extraction={doc.ai_extracted_data} sourceLabel={doc.original_file_name} />
+                </details>
+              )}
             </li>
           ))}
         </ul>
@@ -333,7 +340,14 @@ function UnmatchedRow({
           ))}
         </select>
       </div>
-      {doc.ai_extracted_data && <ExtractionSummary caseId={caseId} extraction={doc.ai_extracted_data} sourceLabel={doc.original_file_name} />}
+      {doc.ai_extracted_data && (doc.ai_extracted_data.detected_income.length > 0 || doc.ai_extracted_data.notes) && (
+        <details className="mt-1">
+          <summary className="cursor-pointer text-xs text-neutral-500 hover:text-neutral-700 select-none">
+            AI reading{doc.ai_extracted_data.detected_income.length > 0 ? ` (${doc.ai_extracted_data.detected_income.length} income lines)` : ""}
+          </summary>
+          <ExtractionSummary caseId={caseId} extraction={doc.ai_extracted_data} sourceLabel={doc.original_file_name} />
+        </details>
+      )}
     </li>
   );
 }

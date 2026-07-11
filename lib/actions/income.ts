@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser } from "@/lib/supabase/profile";
 import { suggestIncomeType, isAnomalousAmount } from "@/lib/mortgage/assist";
+import { consolidatePayslipIncome } from "@/lib/mortgage/consolidate";
+import type { DocumentExtraction } from "@/lib/mortgage/extraction";
 import type { IncomeType } from "@/lib/mortgage/types";
 
 export interface AddIncomeState {
@@ -99,6 +101,47 @@ async function checkAnomaly(
 export async function deleteIncomeEntry(entryId: string, caseId: string) {
   const supabase = await createClient();
   await supabase.from("income_entries").delete().eq("id", entryId);
+  revalidatePath(`/cases/${caseId}`);
+}
+
+/**
+ * Applies the consolidated payslip income proposal (lib/mortgage/consolidate.ts)
+ * as this case's income entries — officer-initiated, one click instead of
+ * per-line Adds from every payslip. Recomputes server-side from the stored
+ * extractions (never trusts a client payload), and REPLACES any previous
+ * document-derived entries so re-running can't double-count; manually typed
+ * entries are left untouched.
+ */
+export async function applyConsolidatedIncome(caseId: string) {
+  const user = await getCurrentUser();
+  const supabase = await createClient();
+
+  const { data: docs } = await supabase.from("case_documents").select("ai_extracted_data").eq("case_id", caseId);
+  const extractions = (docs ?? []).map((d) => d.ai_extracted_data as DocumentExtraction | null).filter((x): x is DocumentExtraction => x !== null);
+  const proposal = consolidatePayslipIncome(extractions);
+  if (proposal.lines.length === 0) return;
+
+  await supabase
+    .from("income_entries")
+    .delete()
+    .eq("case_id", caseId)
+    .in("ai_suggested_type_source", ["claude_vision_extraction", "payslip_consolidation"]);
+
+  await supabase.from("income_entries").insert(
+    proposal.lines.map((line) => ({
+      case_id: caseId,
+      user_id: user?.id ?? null,
+      income_type: line.income_type,
+      gross_amount: line.gross_amount,
+      frequency: line.frequency,
+      supporting_doc: line.label,
+      ai_suggested_type: line.income_type,
+      ai_suggested_type_source: "payslip_consolidation",
+      ai_suggested_type_confidence: null,
+      ai_suggested_type_review_status: "accepted",
+    })),
+  );
+
   revalidatePath(`/cases/${caseId}`);
 }
 

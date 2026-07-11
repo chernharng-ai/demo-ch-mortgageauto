@@ -14,7 +14,9 @@ import CaseReviewNote from "./CaseReviewNote";
 import CommitmentsPanel from "./CommitmentsPanel";
 import CaseProfile from "./CaseProfile";
 import TallyPanel from "./TallyPanel";
+import ConsolidatedIncome from "./ConsolidatedIncome";
 import { runDocumentTally } from "@/lib/mortgage/tally";
+import { consolidatePayslipIncome } from "@/lib/mortgage/consolidate";
 
 export const dynamic = "force-dynamic";
 
@@ -82,6 +84,7 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ id:
   const bestBankName = bestOffer ? bankList.find((b) => b.id === bestOffer.bank_id)?.name : null;
   const banksComparedCount = new Set(eligibilities.map((e) => e.bank_id)).size;
   const tally = runDocumentTally(rawCaseDocuments);
+  const incomeProposal = consolidatePayslipIncome(rawCaseDocuments.map((d) => d.ai_extracted_data).filter((x): x is NonNullable<typeof x> => x !== null));
 
   return (
     <main className="min-h-screen p-6 sm:p-10 max-w-4xl mx-auto">
@@ -132,6 +135,7 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ id:
 
       <section className="mb-10">
         <h2 className="text-sm font-semibold text-neutral-900 mb-3">Income Entries</h2>
+        <ConsolidatedIncome caseId={caseRow.id} proposal={incomeProposal} canEdit={canEdit} />
         <IncomeEntries caseId={caseRow.id} entries={income} canEdit={canEdit} />
       </section>
 
