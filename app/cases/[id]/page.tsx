@@ -6,7 +6,6 @@ import DocumentChecklist from "./DocumentChecklist";
 import IncomeEntries from "./IncomeEntries";
 import CalculationPanel from "./CalculationPanel";
 import CaseStatusControl from "./CaseStatusControl";
-import CaseNotes from "./CaseNotes";
 import AuditLog from "./AuditLog";
 import DeleteCaseButton from "./DeleteCaseButton";
 import CaseSummary from "./CaseSummary";
@@ -61,7 +60,6 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ id:
   const docs = documentItems ?? [];
   const income = incomeEntries ?? [];
   const bankList = banks ?? [];
-  const eligibilities = loanEligibilities ?? [];
   const rawCaseDocuments = caseDocuments ?? [];
 
   let signedUrls = new Map<string, string | null>();
@@ -77,12 +75,6 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ id:
   const signedCaseDocuments = rawCaseDocuments.map((d) => ({ ...d, signedUrl: signedUrls.get(d.file_path) ?? null }));
   const subItems = documentSubItems ?? [];
   const commitments = caseCommitments ?? [];
-  const total = docs.length;
-  const received = docs.filter((d) => d.status === "received").length;
-  const completeness = total > 0 ? Math.round((received / total) * 100) : 0;
-  const bestOffer = [...eligibilities].sort((a, b) => b.max_loan_amount - a.max_loan_amount)[0];
-  const bestBankName = bestOffer ? bankList.find((b) => b.id === bestOffer.bank_id)?.name : null;
-  const banksComparedCount = new Set(eligibilities.map((e) => e.bank_id)).size;
   const tally = runDocumentTally(rawCaseDocuments);
   const incomeProposal = consolidatePayslipIncome(
     rawCaseDocuments.map((d) => d.ai_extracted_data).filter((x): x is NonNullable<typeof x> => x !== null),
@@ -109,21 +101,6 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ id:
           <DeleteCaseButton caseId={caseRow.id} clientName={client?.full_name ?? "this client"} />
         </div>
       </div>
-
-      <section className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-10">
-        <Stat label="Doc Completeness" value={`${completeness}%`} />
-        <Stat label="Income Lines" value={String(income.length)} />
-        <Stat label="Banks Compared" value={String(banksComparedCount)} />
-        <Stat
-          label="Highest Max Loan"
-          value={bestOffer ? `RM ${Math.round(bestOffer.max_loan_amount).toLocaleString()} (${bestBankName})` : "—"}
-        />
-      </section>
-
-      <section className="mb-10">
-        <h2 className="text-sm font-semibold text-neutral-900 mb-2">Notes</h2>
-        <CaseNotes caseId={caseRow.id} notes={caseRow.notes} canEdit={canEdit} />
-      </section>
 
       <section className="mb-10">
         <h2 className="text-sm font-semibold text-neutral-900 mb-3">Document Checklist</h2>
@@ -182,14 +159,5 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ id:
         <AuditLog logs={auditLogs ?? []} />
       </section>
     </main>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg border border-neutral-200 p-3">
-      <div className="text-xs text-neutral-500">{label}</div>
-      <div className="text-lg font-semibold text-neutral-900 mt-0.5">{value}</div>
-    </div>
   );
 }
