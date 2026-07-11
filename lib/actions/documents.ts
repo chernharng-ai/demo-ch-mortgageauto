@@ -30,6 +30,38 @@ function guessMimeTypeFromFileName(fileName: string): string {
 }
 
 /**
+ * Ticks the period chip (2✅ 3✅ …) for a multi-month/multi-year checklist
+ * item when the AI reads which month/year an uploaded document covers —
+ * creates the sub-item if it doesn't exist, marks it received if it does.
+ */
+async function tickPeriodSubItem(supabase: Awaited<ReturnType<typeof createClient>>, caseId: string, docName: string, periodLabel: string) {
+  const label = periodLabel.trim();
+  if (!label) return;
+
+  const { data: existing } = await supabase
+    .from("document_sub_items")
+    .select("id")
+    .eq("case_id", caseId)
+    .eq("doc_name", docName)
+    .eq("label", label)
+    .maybeSingle();
+
+  if (existing) {
+    await supabase.from("document_sub_items").update({ status: "received" }).eq("id", existing.id);
+  } else {
+    // Numeric labels (months/years) sort naturally in the chip row.
+    const numeric = Number(label);
+    await supabase.from("document_sub_items").insert({
+      case_id: caseId,
+      doc_name: docName,
+      label,
+      status: "received",
+      sort_order: Number.isFinite(numeric) ? numeric : 0,
+    });
+  }
+}
+
+/**
  * Drop-zone entry point: takes every file dropped on a case at once, and for
  * each one — uploads it to storage, renames it, asks Claude to classify +
  * extract income (falling back to filename keyword matching for file types
@@ -115,6 +147,10 @@ export async function bulkUploadDocuments(caseId: string, formData: FormData): P
         .update({ status: "received", received_at: new Date().toISOString() })
         .eq("case_id", caseId)
         .eq("doc_name", matchedDocName);
+
+      if (extraction?.period_label) {
+        await tickPeriodSubItem(supabase, caseId, matchedDocName, extraction.period_label);
+      }
     }
 
     results.push({ caseDocumentId: caseDoc.id, originalFileName: file.name, matchedDocName, extraction });
@@ -170,6 +206,10 @@ export async function retryExtraction(caseDocumentId: string, caseId: string) {
       .update({ status: "received", received_at: new Date().toISOString() })
       .eq("case_id", caseId)
       .eq("doc_name", matchedDocName);
+
+    if (extraction?.period_label) {
+      await tickPeriodSubItem(supabase, caseId, matchedDocName, extraction.period_label);
+    }
   }
 
   revalidatePath(`/cases/${caseId}`);
@@ -180,12 +220,19 @@ export async function retryExtraction(caseDocumentId: string, caseId: string) {
 export async function assignDocumentMatch(caseDocumentId: string, caseId: string, docName: string) {
   const supabase = await createClient();
 
+  const { data: caseDoc } = await supabase.from("case_documents").select("ai_extracted_data").eq("id", caseDocumentId).single();
+
   await supabase.from("case_documents").update({ matched_doc_name: docName }).eq("id", caseDocumentId);
   await supabase
     .from("document_items")
     .update({ status: "received", received_at: new Date().toISOString() })
     .eq("case_id", caseId)
     .eq("doc_name", docName);
+
+  const periodLabel = (caseDoc?.ai_extracted_data as DocumentExtraction | null)?.period_label;
+  if (periodLabel) {
+    await tickPeriodSubItem(supabase, caseId, docName, periodLabel);
+  }
 
   revalidatePath(`/cases/${caseId}`);
   revalidatePath("/");

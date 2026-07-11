@@ -23,6 +23,8 @@ export interface DocumentExtraction {
   client_name_on_document: string | null;
   notes: string | null;
   matched_doc_name: string | null;
+  /** Short period tag for multi-month/multi-year checklist items — month number ("2" for a Feb payslip) or 2-digit year ("26" for a 2026 EPF statement). Drives the auto-ticked sub-item chips (2✅ 3✅ …). */
+  period_label: string | null;
 }
 
 function buildExtractionSchema(candidateDocNames: string[]) {
@@ -56,8 +58,13 @@ function buildExtractionSchema(candidateDocNames: string[]) {
           "Which checklist item this document belongs to, by document CATEGORY — e.g. any payslip files under the payslip item even if the item asks for 3 months and this is one month. Null only when no checklist item is of this document's kind.",
         anyOf: [{ type: "string", enum: candidateDocNames }, { type: "null" }],
       },
+      period_label: {
+        description:
+          "The period this document covers, as the shortest natural tag: the month number for a monthly document ('2' for a February payslip or bank statement), the 2-digit year for a yearly document ('26' for a 2026 EPF or tax statement). Null for documents with no period (IC, booking form, credit report).",
+        anyOf: [{ type: "string" }, { type: "null" }],
+      },
     },
-    required: ["document_type", "detected_income", "employer_name", "client_name_on_document", "notes", "matched_doc_name"],
+    required: ["document_type", "detected_income", "employer_name", "client_name_on_document", "notes", "matched_doc_name", "period_label"],
     additionalProperties: false,
   };
 }
@@ -94,7 +101,8 @@ export async function extractDocumentData(
         "document (e.g. an IC), return an empty detected_income array. Also file the document under the checklist item it " +
         `belongs to, by category: ${candidateDocNames.map((n) => `"${n}"`).join(", ")}. Match on document KIND, not quantity — ` +
         "a single month's payslip still files under a '3 months payslip' item (use notes to flag that more months are needed). " +
-        "Return matched_doc_name as exactly one of those strings, or null only if no item is of this document's kind.",
+        "Return matched_doc_name as exactly one of those strings, or null only if no item is of this document's kind. " +
+        "Also return period_label: the month number for a monthly document (e.g. '5' for May), the 2-digit year for a yearly one (e.g. '26' for 2026), or null if the document has no period.",
     },
   ];
 
