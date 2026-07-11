@@ -87,3 +87,30 @@ export function buildChecklistTemplate(input: ChecklistTemplateInput): string[] 
 
   return docs;
 }
+
+/**
+ * Which month chips (as month numbers, e.g. ["4","5","6"]) a monthly income
+ * document item should expect, counting back from the last complete month
+ * before the application date. Per the officer's rule: 3 months for fixed
+ * salary, 6 when the client has variable income (OT/incentive/commission) —
+ * except items that are explicitly 6-month regardless (company bank
+ * statement, rental crediting). Returns [] for items with no monthly period
+ * (IC, EPF, tax forms, credit reports…).
+ */
+export function expectedPeriodLabels(docName: string, applicationDate: string, hasVariableIncome: boolean): string[] {
+  const name = docName.toLowerCase();
+  const isMonthly = name.includes("payslip") || name.includes("bank statement");
+  if (!isMonthly) return [];
+
+  const alwaysSixMonths = name.includes("6 months") && !name.includes("3/6");
+  const monthsNeeded = alwaysSixMonths || hasVariableIncome ? 6 : 3;
+
+  // Parse "YYYY-MM-DD" directly — new Date() would shift across timezones.
+  const appMonth = Number(applicationDate.slice(5, 7)); // 1-based
+  const labels: string[] = [];
+  for (let i = 1; i <= monthsNeeded; i++) {
+    const month = ((appMonth - 1 - i + 12) % 12) + 1;
+    labels.unshift(String(month));
+  }
+  return labels;
+}

@@ -14,13 +14,22 @@ export default function CaseProfile({ caseId, caseRow, canEdit }: { caseId: stri
   }
 
   function updateChecklistFlags(
-    financingScheme: Case["financing_scheme"],
-    applicationDate: string,
-    isOverseas: boolean,
-    hasRentalIncome: boolean,
-    needsSiteVisit: boolean,
+    overrides: Partial<
+      Pick<Case, "financing_scheme" | "application_date" | "is_overseas" | "has_rental_income" | "needs_site_visit" | "has_variable_income">
+    >,
   ) {
-    startTransition(() => updateCaseChecklistProfile(caseId, financingScheme, applicationDate, isOverseas, hasRentalIncome, needsSiteVisit));
+    const next = { ...caseRow, ...overrides };
+    startTransition(() =>
+      updateCaseChecklistProfile(
+        caseId,
+        next.financing_scheme,
+        next.application_date,
+        next.is_overseas,
+        next.has_rental_income,
+        next.needs_site_visit,
+        next.has_variable_income,
+      ),
+    );
   }
 
   if (!canEdit) {
@@ -79,15 +88,7 @@ export default function CaseProfile({ caseId, caseRow, canEdit }: { caseId: stri
           <span className="text-neutral-500">Financing:</span>
           <select
             value={caseRow.financing_scheme}
-            onChange={(e) =>
-              updateChecklistFlags(
-                e.target.value as Case["financing_scheme"],
-                caseRow.application_date,
-                caseRow.is_overseas,
-                caseRow.has_rental_income,
-                caseRow.needs_site_visit,
-              )
-            }
+            onChange={(e) => updateChecklistFlags({ financing_scheme: e.target.value as Case["financing_scheme"] })}
             disabled={isPending}
             className="rounded-md border border-neutral-300 px-2 py-1 text-sm bg-white"
           >
@@ -100,12 +101,23 @@ export default function CaseProfile({ caseId, caseRow, canEdit }: { caseId: stri
           <input
             type="date"
             value={caseRow.application_date}
-            onChange={(e) =>
-              updateChecklistFlags(caseRow.financing_scheme, e.target.value, caseRow.is_overseas, caseRow.has_rental_income, caseRow.needs_site_visit)
-            }
+            onChange={(e) => updateChecklistFlags({ application_date: e.target.value })}
             disabled={isPending}
             className="rounded-md border border-neutral-300 px-2 py-1 text-sm bg-white"
           />
+        </label>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-4 text-sm">
+        <label className="flex items-center gap-1.5">
+          <input
+            type="checkbox"
+            checked={caseRow.has_variable_income}
+            onChange={(e) => updateChecklistFlags({ has_variable_income: e.target.checked })}
+            disabled={isPending}
+            className="accent-neutral-900"
+          />
+          <span className="text-neutral-600">Variable income (OT / incentive / commission) — banks expect 6 months of income docs instead of 3</span>
         </label>
       </div>
 
@@ -115,9 +127,7 @@ export default function CaseProfile({ caseId, caseRow, canEdit }: { caseId: stri
             <input
               type="checkbox"
               checked={caseRow.is_overseas}
-              onChange={(e) =>
-                updateChecklistFlags(caseRow.financing_scheme, caseRow.application_date, e.target.checked, caseRow.has_rental_income, caseRow.needs_site_visit)
-              }
+              onChange={(e) => updateChecklistFlags({ is_overseas: e.target.checked })}
               disabled={isPending}
               className="accent-neutral-900"
             />
@@ -127,9 +137,7 @@ export default function CaseProfile({ caseId, caseRow, canEdit }: { caseId: stri
             <input
               type="checkbox"
               checked={caseRow.has_rental_income}
-              onChange={(e) =>
-                updateChecklistFlags(caseRow.financing_scheme, caseRow.application_date, caseRow.is_overseas, e.target.checked, caseRow.needs_site_visit)
-              }
+              onChange={(e) => updateChecklistFlags({ has_rental_income: e.target.checked })}
               disabled={isPending}
               className="accent-neutral-900"
             />
@@ -139,9 +147,7 @@ export default function CaseProfile({ caseId, caseRow, canEdit }: { caseId: stri
             <input
               type="checkbox"
               checked={caseRow.needs_site_visit}
-              onChange={(e) =>
-                updateChecklistFlags(caseRow.financing_scheme, caseRow.application_date, caseRow.is_overseas, caseRow.has_rental_income, e.target.checked)
-              }
+              onChange={(e) => updateChecklistFlags({ needs_site_visit: e.target.checked })}
               disabled={isPending}
               className="accent-neutral-900"
             />

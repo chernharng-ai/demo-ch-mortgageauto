@@ -36,6 +36,7 @@ export interface Case {
   application_date: string;
   is_overseas: boolean;
   has_rental_income: boolean;
+  has_variable_income: boolean;
   needs_site_visit: boolean;
   notes: string | null;
   ai_summary: string | null;

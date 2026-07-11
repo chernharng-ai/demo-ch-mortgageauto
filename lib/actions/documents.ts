@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser } from "@/lib/supabase/profile";
 import { extractDocumentData, classifyByFilename, buildStorageFileName, type DocumentExtraction } from "@/lib/mortgage/extraction";
-import { buildChecklistTemplate } from "@/lib/mortgage/checklistTemplate";
+import { buildChecklistTemplate, expectedPeriodLabels } from "@/lib/mortgage/checklistTemplate";
 import type { Case, Client } from "@/lib/mortgage/types";
 
 export interface BulkUploadResult {
@@ -286,6 +286,7 @@ export async function updateCaseChecklistProfile(
   isOverseas: boolean,
   hasRentalIncome: boolean,
   needsSiteVisit: boolean,
+  hasVariableIncome: boolean,
 ) {
   const supabase = await createClient();
   await supabase
@@ -296,6 +297,7 @@ export async function updateCaseChecklistProfile(
       is_overseas: isOverseas,
       has_rental_income: hasRentalIncome,
       needs_site_visit: needsSiteVisit,
+      has_variable_income: hasVariableIncome,
     })
     .eq("id", caseId);
 
@@ -333,6 +335,29 @@ export async function generateChecklistFromTemplate(caseId: string) {
 
   if (toInsert.length > 0) {
     await supabase.from("document_items").insert(toInsert);
+  }
+
+  // Pre-seed the expected month chips (1⚠️ 2⚠️ …) on every monthly income
+  // item — bank-driven and template alike — so missing months are visible at
+  // a glance. Months already ticked (or manually added) are left untouched.
+  const allDocNames = [...new Set([...existingNames, ...template])];
+  const { data: existingSubs } = await supabase.from("document_sub_items").select("doc_name, label").eq("case_id", caseId);
+  const existingChips = new Set((existingSubs ?? []).map((s) => `${s.doc_name}|${s.label}`));
+
+  const chipsToInsert = allDocNames.flatMap((docName) =>
+    expectedPeriodLabels(docName, caseRow.application_date, caseRow.has_variable_income)
+      .filter((label) => !existingChips.has(`${docName}|${label}`))
+      .map((label) => ({
+        case_id: caseId,
+        doc_name: docName,
+        label,
+        status: "pending" as const,
+        sort_order: Number(label),
+      })),
+  );
+
+  if (chipsToInsert.length > 0) {
+    await supabase.from("document_sub_items").insert(chipsToInsert);
   }
 
   revalidatePath(`/cases/${caseId}`);
