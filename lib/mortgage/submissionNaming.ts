@@ -12,8 +12,12 @@
 //   Offer / confirmation letter   → EOL
 //   Booking form                  → 2.Booking Form
 //
-// Dates use MM-DD-YYYY ("/" is a path separator inside zips). Anything not
-// covered keeps its stored file name.
+// CTOS/Experian dates are the report's PRINTED report/order date (AI-read
+// off the header) — so the officer can tell at a glance whether a fresh
+// report is needed before submission — falling back to the upload date
+// only when the printed date couldn't be read. Dates use MM-DD-YYYY
+// ("/" is a path separator inside zips). Anything not covered keeps its
+// stored file name.
 
 import type { DocumentExtraction } from "./extraction";
 
@@ -48,8 +52,9 @@ function baseName(doc: NamableDocument): string | null {
   if (x?.document_type === "epf_statement") return x.period_label ? `EPF ${x.period_label}` : "EPF";
   if (x?.document_type === "ic") return "IC";
 
-  if (haystack.includes("ctos")) return `1.CTOS (${formatDate(doc.created_at)})`;
-  if (haystack.includes("experian") || haystack.includes("exp report")) return `1.EXP(${formatDate(doc.created_at)})`;
+  const reportDate = formatDate(x?.report_date || doc.created_at);
+  if (haystack.includes("ctos")) return `1.CTOS (${reportDate})`;
+  if (haystack.includes("experian") || haystack.includes("exp report")) return `1.EXP(${reportDate})`;
   if (x?.document_type === "tax_form" || haystack.includes("ea form")) return x?.period_label ? `EA ${x.period_label}` : "EA";
   if (haystack.includes("verification")) return "EVL";
   if (haystack.includes("offer letter") || haystack.includes("confirmation letter")) return "EOL";

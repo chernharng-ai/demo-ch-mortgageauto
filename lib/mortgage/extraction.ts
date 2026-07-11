@@ -48,6 +48,8 @@ export interface DocumentExtraction {
   epf_contributions: EpfContributionRow[] | null;
   /** IC only: true when BOTH front and back sides are visible in the document, false when only one side is. Null on non-IC documents. */
   ic_front_and_back: boolean | null;
+  /** Credit reports (CTOS/Experian) only: the report/order date printed on the document as YYYY-MM-DD — tells the officer whether a fresh report is needed before submission. Null on other documents. */
+  report_date: string | null;
 }
 
 function buildExtractionSchema(candidateDocNames: string[]) {
@@ -132,6 +134,11 @@ function buildExtractionSchema(candidateDocNames: string[]) {
         description: "IC documents only: true when BOTH the front and back of the IC are visible, false when only one side is. Null on non-IC documents.",
         anyOf: [{ type: "boolean" }, { type: "null" }],
       },
+      report_date: {
+        description:
+          "Credit reports (CTOS/Experian) only: the report/order date printed on the document header, as YYYY-MM-DD (e.g. a CTOS 'Date: 2026-05-15 16:53:24' → '2026-05-15'; an Experian 'Order Date: 2026-06-29 01:28:22' → '2026-06-29'). Null on any other document type.",
+        anyOf: [{ type: "string" }, { type: "null" }],
+      },
     },
     required: [
       "document_type",
@@ -148,6 +155,7 @@ function buildExtractionSchema(candidateDocNames: string[]) {
       "pcb_deduction",
       "epf_contributions",
       "ic_front_and_back",
+      "report_date",
     ],
     additionalProperties: false,
   };
@@ -189,7 +197,8 @@ export async function extractDocumentData(
         "Also return period_label: the month number for a monthly document (e.g. '5' for May), the 2-digit year for a yearly one (e.g. '26' for 2026), or null if the document has no period. " +
         "On a payslip, also extract every employee deduction shown: EPF/KWSP employee deduction, the employer EPF contribution if shown, SOCSO/PERKESO, EIS/SIP, and PCB/MTD income tax. " +
         "On an EPF details statement, list every monthly contribution row (month credited, year, total amount). " +
-        "On an IC, report whether both front and back are visible.",
+        "On an IC, report whether both front and back are visible. " +
+        "On a credit report (CTOS/Experian), extract the report/order date printed on the header as report_date (YYYY-MM-DD).",
     },
   ];
 
