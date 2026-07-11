@@ -334,6 +334,11 @@ export async function updateCaseChecklistProfile(
     })
     .eq("id", caseId);
 
+  // Keep the checklist in step with the flags automatically — items and
+  // expected month chips are only ever added (never removed), so this is
+  // safe to run on every change.
+  await generateChecklistFromTemplate(caseId);
+
   revalidatePath(`/cases/${caseId}`);
 }
 

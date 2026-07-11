@@ -154,15 +154,32 @@ export async function updateCaseNotes(caseId: string, notes: string) {
 
 export async function deleteCase(caseId: string) {
   const supabase = await createClient();
-  // FKs are NOT ON DELETE CASCADE — clear dependents before the case row itself.
-  // audit_logs is append-only by design (no delete policy) and intentionally kept.
+
+  // Uploaded files first — DB rows cascade, but storage objects don't.
+  const { data: caseDocs } = await supabase.from("case_documents").select("file_path").eq("case_id", caseId);
+  const paths = (caseDocs ?? []).map((d) => d.file_path);
+  if (paths.length > 0) {
+    await supabase.storage.from("client-documents").remove(paths);
+  }
+
+  // Clear every dependent before the case row: the original tables have no
+  // ON DELETE CASCADE, and audit_logs' FK would otherwise block the delete —
+  // the autopilot writes an audit row on every upload's recalculation, so
+  // every reviewed case has them.
   await Promise.all([
     supabase.from("income_calculations").delete().eq("case_id", caseId),
     supabase.from("loan_eligibilities").delete().eq("case_id", caseId),
     supabase.from("document_items").delete().eq("case_id", caseId),
+    supabase.from("document_sub_items").delete().eq("case_id", caseId),
     supabase.from("income_entries").delete().eq("case_id", caseId),
+    supabase.from("case_commitments").delete().eq("case_id", caseId),
+    supabase.from("case_documents").delete().eq("case_id", caseId),
+    supabase.from("audit_logs").delete().eq("case_id", caseId),
   ]);
-  await supabase.from("cases").delete().eq("id", caseId);
+  const { error } = await supabase.from("cases").delete().eq("id", caseId);
+  if (error) {
+    console.error(`Case delete failed for ${caseId}:`, error.message);
+  }
   revalidatePath("/");
   redirect("/");
 }
