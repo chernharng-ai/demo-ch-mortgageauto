@@ -14,7 +14,6 @@ interface DocGroup {
   status: DocStatus;
   bankCount: number;
   isCustom: boolean;
-  documents: SignedCaseDocument[];
   subItems: DocumentSubItem[];
 }
 
@@ -41,14 +40,12 @@ export default function DocumentChecklist({
 
   const groups: DocGroup[] = candidateDocNames.map((docName) => {
     const groupItems = items.filter((i) => i.doc_name === docName);
-    const documents = caseDocuments.filter((d) => d.matched_doc_name === docName);
     const groupSubItems = subItems.filter((s) => s.doc_name === docName).sort((a, b) => a.sort_order - b.sort_order);
     return {
       docName,
       status: groupItems[0]?.status ?? "pending",
       bankCount: groupItems.length,
       isCustom: groupItems.every((i) => i.bank_id === null),
-      documents,
       subItems: groupSubItems,
     };
   });
@@ -103,74 +100,44 @@ export default function DocumentChecklist({
 function DocRow({ caseId, group, canEdit }: { caseId: string; group: DocGroup; canEdit: boolean }) {
   const [isPending, startTransition] = useTransition();
 
+  function cycle(current: DocStatus): DocStatus {
+    if (current === "pending") return "received";
+    if (current === "received") return "missing";
+    return "pending";
+  }
+
   return (
     <li className="rounded-md border border-neutral-200 px-3 py-2">
       <div className="flex items-center justify-between gap-3">
         <span className="text-sm text-neutral-800 flex items-center gap-2">
-          <span aria-hidden>{icon(group.status)}</span>
+          <button
+            type="button"
+            disabled={isPending || !canEdit}
+            onClick={() => startTransition(() => resetDocumentGroupStatus(caseId, group.docName, cycle(group.status)))}
+            title="Click to change status"
+            className="disabled:cursor-default"
+            aria-label={`Status: ${group.status} — click to change`}
+          >
+            {icon(group.status)}
+          </button>
           {group.docName}
-          {!group.isCustom && (
-            <span className="text-xs text-neutral-400">
-              ({group.bankCount} bank{group.bankCount === 1 ? "" : "s"})
-            </span>
-          )}
         </span>
-        {canEdit && (
-          <div className="flex items-center gap-1" aria-disabled={isPending}>
-            {(["pending", "received", "missing"] as const).map((s) => (
-              <button
-                key={s}
-                type="button"
-                disabled={isPending || group.status === s}
-                onClick={() => startTransition(() => resetDocumentGroupStatus(caseId, group.docName, s))}
-                className="text-xs px-2 py-1 rounded border border-neutral-200 hover:bg-neutral-50 disabled:opacity-40 disabled:cursor-not-allowed capitalize"
-              >
-                {s}
-              </button>
-            ))}
-            {group.isCustom && (
-              <button
-                type="button"
-                disabled={isPending}
-                onClick={() => {
-                  if (window.confirm(`Remove the "${group.docName}" checklist item?`)) {
-                    startTransition(() => deleteChecklistItem(caseId, group.docName));
-                  }
-                }}
-                className="text-xs px-2 py-1 rounded border border-neutral-200 text-red-600 hover:bg-red-50"
-              >
-                Remove
-              </button>
-            )}
-          </div>
+        {canEdit && group.isCustom && (
+          <button
+            type="button"
+            disabled={isPending}
+            onClick={() => {
+              if (window.confirm(`Remove the "${group.docName}" checklist item?`)) {
+                startTransition(() => deleteChecklistItem(caseId, group.docName));
+              }
+            }}
+            aria-label={`Remove ${group.docName}`}
+            className="text-neutral-300 hover:text-red-600 px-1"
+          >
+            ×
+          </button>
         )}
       </div>
-      {group.documents.length > 0 && (
-        <ul className="mt-1 space-y-1">
-          {group.documents.map((doc) => (
-            <li key={doc.id} className="text-xs text-neutral-400">
-              <div className="flex items-center gap-2">
-                {doc.signedUrl ? (
-                  <a href={doc.signedUrl} target="_blank" rel="noreferrer" className="underline hover:text-neutral-600">
-                    {doc.file_name}
-                  </a>
-                ) : (
-                  <span>{doc.file_name}</span>
-                )}
-                {canEdit && doc.ai_extraction_status !== "done" && <RetryButton caseId={caseId} caseDocumentId={doc.id} />}
-              </div>
-              {doc.ai_extracted_data && (doc.ai_extracted_data.detected_income.length > 0 || doc.ai_extracted_data.notes) && (
-                <details className="mt-0.5">
-                  <summary className="cursor-pointer text-neutral-400 hover:text-neutral-600 select-none">
-                    AI reading{doc.ai_extracted_data.detected_income.length > 0 ? ` (${doc.ai_extracted_data.detected_income.length} income lines)` : ""}
-                  </summary>
-                  <ExtractionSummary caseId={caseId} extraction={doc.ai_extracted_data} sourceLabel={doc.original_file_name} />
-                </details>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
 
       <SubItems caseId={caseId} docName={group.docName} subItems={group.subItems} canEdit={canEdit} />
     </li>
