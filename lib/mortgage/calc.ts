@@ -109,6 +109,8 @@ export interface IncomeEntryLike {
   income_type: string;
   gross_amount: number;
   frequency: string;
+  /** Actual nett amount when derived from documents (latest basic minus the real EPF/SOCSO/EIS/PCB deductions on the slip) — preferred over the PCB formula estimate. */
+  nett_amount?: number | null;
 }
 
 function normalizeEmploymentType(employmentType: string): string {
@@ -150,7 +152,10 @@ export function computeNettEligibleIncome(
   const total = entries.reduce((sum, entry) => {
     const multiplier = rules[entry.income_type] ?? 0;
     const monthly = monthlyAmount(entry);
-    const baseAmount = entry.income_type === "basic" ? computeNettIncome(monthly).nettMonthlyIncome : monthly;
+    // Prefer the actual nett derived from the payslip's real deductions;
+    // fall back to the PCB formula estimate for manually typed basic salary.
+    const baseAmount =
+      entry.nett_amount != null ? entry.nett_amount : entry.income_type === "basic" ? computeNettIncome(monthly).nettMonthlyIncome : monthly;
     return sum + baseAmount * multiplier;
   }, 0);
   return round2(total);

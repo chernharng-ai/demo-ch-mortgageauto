@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser } from "@/lib/supabase/profile";
 import { suggestIncomeType, isAnomalousAmount } from "@/lib/mortgage/assist";
 import { consolidatePayslipIncome } from "@/lib/mortgage/consolidate";
+import { runCalculations } from "./calculations";
 import type { DocumentExtraction } from "@/lib/mortgage/extraction";
 import type { IncomeType } from "@/lib/mortgage/types";
 
@@ -105,21 +106,26 @@ export async function deleteIncomeEntry(entryId: string, caseId: string) {
 }
 
 /**
- * Applies the consolidated payslip income proposal (lib/mortgage/consolidate.ts)
- * as this case's income entries — officer-initiated, one click instead of
- * per-line Adds from every payslip. Recomputes server-side from the stored
- * extractions (never trusts a client payload), and REPLACES any previous
- * document-derived entries so re-running can't double-count; manually typed
- * entries are left untouched.
+ * Auto-derives this case's income from the stored payslip extractions
+ * (lib/mortgage/consolidate.ts) — runs automatically after uploads so the
+ * whole review is hands-off, and can be re-triggered from the UI. Always
+ * recomputes server-side, and REPLACES previous document-derived entries so
+ * re-running can't double-count; manually typed entries are left untouched.
+ * Returns the number of income lines derived.
  */
-export async function applyConsolidatedIncome(caseId: string) {
+export async function applyConsolidatedIncome(caseId: string): Promise<number> {
   const user = await getCurrentUser();
   const supabase = await createClient();
 
-  const { data: docs } = await supabase.from("case_documents").select("ai_extracted_data").eq("case_id", caseId);
+  const [{ data: caseRow }, { data: docs }] = await Promise.all([
+    supabase.from("cases").select("application_date, has_variable_income").eq("id", caseId).single(),
+    supabase.from("case_documents").select("ai_extracted_data").eq("case_id", caseId),
+  ]);
+  if (!caseRow) return 0;
+
   const extractions = (docs ?? []).map((d) => d.ai_extracted_data as DocumentExtraction | null).filter((x): x is DocumentExtraction => x !== null);
-  const proposal = consolidatePayslipIncome(extractions);
-  if (proposal.lines.length === 0) return;
+  const proposal = consolidatePayslipIncome(extractions, caseRow.application_date, caseRow.has_variable_income);
+  if (proposal.lines.length === 0) return 0;
 
   await supabase
     .from("income_entries")
@@ -133,6 +139,7 @@ export async function applyConsolidatedIncome(caseId: string) {
       user_id: user?.id ?? null,
       income_type: line.income_type,
       gross_amount: line.gross_amount,
+      nett_amount: line.nett_amount,
       frequency: line.frequency,
       supporting_doc: line.label,
       ai_suggested_type: line.income_type,
@@ -143,6 +150,15 @@ export async function applyConsolidatedIncome(caseId: string) {
   );
 
   revalidatePath(`/cases/${caseId}`);
+  return proposal.lines.length;
+}
+
+/** Full autopilot step: derive income from documents, then run the DSR+NDI bank comparison — used after every upload and from the UI's re-run button. */
+export async function rederiveAndCalculate(caseId: string) {
+  const derived = await applyConsolidatedIncome(caseId);
+  if (derived > 0) {
+    await runCalculations(caseId, {});
+  }
 }
 
 /** Confirms one AI-extracted income line (see lib/mortgage/extraction.ts) as a real income entry — officer-initiated, never automatic. */

@@ -69,6 +69,7 @@ export interface IncomeEntry {
   case_id: string;
   income_type: IncomeType;
   gross_amount: number;
+  nett_amount: number | null;
   frequency: Frequency;
   supporting_doc: string | null;
   ai_suggested_type: IncomeType | null;

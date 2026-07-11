@@ -38,6 +38,12 @@ export interface DocumentExtraction {
   epf_employee_deduction: number | null;
   /** Payslip only: the employer's EPF/KWSP contribution if shown. Null otherwise. */
   epf_employer_contribution: number | null;
+  /** Payslip only: the employee's SOCSO/PERKESO deduction. Null otherwise. */
+  socso_deduction: number | null;
+  /** Payslip only: the employee's EIS/SIP deduction. Null otherwise. */
+  eis_deduction: number | null;
+  /** Payslip only: the PCB/MTD income tax deduction. Null otherwise. */
+  pcb_deduction: number | null;
   /** EPF details statement only: every monthly contribution row visible. Null on other documents. Used to tally against payslip deductions (one-month lag). */
   epf_contributions: EpfContributionRow[] | null;
   /** IC only: true when BOTH front and back sides are visible in the document, false when only one side is. Null on non-IC documents. */
@@ -88,6 +94,18 @@ function buildExtractionSchema(candidateDocNames: string[]) {
         description: "Payslips only: the employer's EPF/KWSP contribution amount if shown on the slip. Null otherwise.",
         anyOf: [{ type: "number" }, { type: "null" }],
       },
+      socso_deduction: {
+        description: "Payslips only: the employee's SOCSO/PERKESO deduction amount. Null otherwise.",
+        anyOf: [{ type: "number" }, { type: "null" }],
+      },
+      eis_deduction: {
+        description: "Payslips only: the employee's EIS/SIP deduction amount. Null otherwise.",
+        anyOf: [{ type: "number" }, { type: "null" }],
+      },
+      pcb_deduction: {
+        description: "Payslips only: the PCB/MTD monthly income tax deduction amount. Null otherwise.",
+        anyOf: [{ type: "number" }, { type: "null" }],
+      },
       epf_contributions: {
         description:
           "EPF details statements only: EVERY monthly contribution row visible, each with the month number it was credited ('2' for February) and 2-digit year ('26'). Copy each printed figure into its own field: the employee share, the employer share, and the combined total — use null for any figure the statement does not print separately. Null on any other document type.",
@@ -125,6 +143,9 @@ function buildExtractionSchema(candidateDocNames: string[]) {
       "period_label",
       "epf_employee_deduction",
       "epf_employer_contribution",
+      "socso_deduction",
+      "eis_deduction",
+      "pcb_deduction",
       "epf_contributions",
       "ic_front_and_back",
     ],
@@ -166,7 +187,7 @@ export async function extractDocumentData(
         "a single month's payslip still files under a '3 months payslip' item (use notes to flag that more months are needed). " +
         "Return matched_doc_name as exactly one of those strings, or null only if no item is of this document's kind. " +
         "Also return period_label: the month number for a monthly document (e.g. '5' for May), the 2-digit year for a yearly one (e.g. '26' for 2026), or null if the document has no period. " +
-        "On a payslip, also extract the EPF/KWSP employee deduction and (if shown) the employer contribution. " +
+        "On a payslip, also extract every employee deduction shown: EPF/KWSP employee deduction, the employer EPF contribution if shown, SOCSO/PERKESO, EIS/SIP, and PCB/MTD income tax. " +
         "On an EPF details statement, list every monthly contribution row (month credited, year, total amount). " +
         "On an IC, report whether both front and back are visible.",
     },

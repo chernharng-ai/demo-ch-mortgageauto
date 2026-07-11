@@ -84,7 +84,11 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ id:
   const bestBankName = bestOffer ? bankList.find((b) => b.id === bestOffer.bank_id)?.name : null;
   const banksComparedCount = new Set(eligibilities.map((e) => e.bank_id)).size;
   const tally = runDocumentTally(rawCaseDocuments);
-  const incomeProposal = consolidatePayslipIncome(rawCaseDocuments.map((d) => d.ai_extracted_data).filter((x): x is NonNullable<typeof x> => x !== null));
+  const incomeProposal = consolidatePayslipIncome(
+    rawCaseDocuments.map((d) => d.ai_extracted_data).filter((x): x is NonNullable<typeof x> => x !== null),
+    caseRow.application_date,
+    caseRow.has_variable_income,
+  );
 
   return (
     <main className="min-h-screen p-6 sm:p-10 max-w-4xl mx-auto">

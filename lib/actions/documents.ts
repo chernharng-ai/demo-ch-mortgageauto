@@ -6,6 +6,21 @@ import { getCurrentUser } from "@/lib/supabase/profile";
 import { extractDocumentData, classifyByFilename, buildStorageFileName, type DocumentExtraction } from "@/lib/mortgage/extraction";
 import { buildChecklistTemplate, expectedPeriodLabels } from "@/lib/mortgage/checklistTemplate";
 import { epfStatementHasSplit } from "@/lib/mortgage/tally";
+import { rederiveAndCalculate } from "./income";
+
+/**
+ * The autopilot step, per the officer: uploading documents should review
+ * everything by itself — derive the case income from the payslips read so
+ * far, then run the full DSR+NDI bank comparison, no manual clicks. A
+ * failure here never breaks the upload itself.
+ */
+async function autoDeriveAndCalculate(caseId: string) {
+  try {
+    await rederiveAndCalculate(caseId);
+  } catch (err) {
+    console.error(`Auto income/calculation failed for case ${caseId}:`, err);
+  }
+}
 import type { Case, Client } from "@/lib/mortgage/types";
 
 export interface BulkUploadResult {
@@ -167,6 +182,8 @@ export async function bulkUploadDocuments(caseId: string, formData: FormData): P
     results.push({ caseDocumentId: caseDoc.id, originalFileName: file.name, matchedDocName, extraction });
   }
 
+  await autoDeriveAndCalculate(caseId);
+
   revalidatePath(`/cases/${caseId}`);
   revalidatePath("/");
 
@@ -222,6 +239,8 @@ export async function retryExtraction(caseDocumentId: string, caseId: string) {
       await tickPeriodSubItem(supabase, caseId, matchedDocName, extraction.period_label);
     }
   }
+
+  await autoDeriveAndCalculate(caseId);
 
   revalidatePath(`/cases/${caseId}`);
   revalidatePath("/");
