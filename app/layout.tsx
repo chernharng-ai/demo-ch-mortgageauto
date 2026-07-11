@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import AppShell from "./AppShell";
 
 export const metadata: Metadata = {
   title: "Mortgage Case Review",
@@ -13,7 +14,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="antialiased bg-white text-neutral-900">{children}</body>
+      <body className="antialiased bg-white text-neutral-900">
+        <AppShell>{children}</AppShell>
+      </body>
     </html>
   );
 }
