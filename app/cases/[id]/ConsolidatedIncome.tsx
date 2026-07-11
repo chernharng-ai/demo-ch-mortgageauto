@@ -54,7 +54,8 @@ export default function ConsolidatedIncome({ caseId, proposal, canEdit }: { case
         </button>
       )}
       <p className="text-[11px] text-neutral-400 mt-1.5">
-        Nett basic uses the real deductions on the latest payslip. Manually typed entries below are kept and included on top.
+        Nett basic follows the standard Malaysian payroll calculation (EPF Third Schedule, SOCSO/EIS tables, PCB) — the same way banks recompute it.
+        Manually typed entries below are kept and included on top.
       </p>
     </div>
   );

@@ -1,9 +1,10 @@
 // Auto-derives the case's income from payslip extractions — no manual
 // "Add" clicks. The officer's rules, verbatim:
 //
-//   - Basic pay: take the LATEST month's basic, then deduct the real
-//     EIS + SOCSO + EPF employee + PCB printed on that payslip → nett.
-//     (Gross is kept too — gross-basis banks bracket on gross.)
+//   - Basic pay: take the LATEST month's basic, then compute nett the way
+//     BANKS do — the standard Malaysian payroll formulas (EPF Third
+//     Schedule, SOCSO/EIS tables, PCB), NOT the deductions printed on the
+//     payslip. (Gross is kept too — gross-basis banks bracket on gross.)
 //   - Fixed allowances (same amount on every payslip): counted once;
 //     each bank's own allowance multiplier applies in the calc engine.
 //   - Variable income (OT / commission / incentive / non-fixed
@@ -15,6 +16,7 @@
 import type { DocumentExtraction } from "./extraction";
 import type { IncomeType } from "./types";
 import { expectedPeriodLabels } from "./checklistTemplate";
+import { nettBasicPay } from "./payroll";
 
 export interface ConsolidatedIncomeLine {
   income_type: IncomeType;
@@ -77,29 +79,18 @@ export function consolidatePayslipIncome(
   const latest = byMonth.get(latestMonth)!;
   const lines: ConsolidatedIncomeLine[] = [];
 
-  // Basic pay: latest month's basic, gross + nett of the REAL deductions on that slip.
+  // Basic pay: latest month's basic; nett computed the way banks do — the
+  // standard payroll formulas (EPF Third Schedule, SOCSO/EIS tables, PCB),
+  // not the deductions printed on the slip.
   const latestBasic = latest.detected_income.filter((l) => l.income_type === "basic").reduce((sum, l) => sum + l.gross_amount, 0);
   if (latestBasic > 0) {
-    const deductions = [
-      { name: "EPF", value: latest.epf_employee_deduction },
-      { name: "SOCSO", value: latest.socso_deduction },
-      { name: "EIS", value: latest.eis_deduction },
-      { name: "PCB", value: latest.pcb_deduction },
-    ];
-    const missing = deductions.filter((d) => d.value == null).map((d) => d.name);
-    const totalDeductions = deductions.reduce((sum, d) => sum + (d.value ?? 0), 0);
-    const nett = round2(Math.max(0, latestBasic - totalDeductions));
-    if (missing.length > 0 && missing.length < deductions.length) {
-      flags.push(`${missing.join(", ")} not visible on the ${monthName(latestMonth)} payslip — nett basic computed from the deductions that are shown.`);
-    } else if (missing.length === deductions.length) {
-      flags.push(`No deductions visible on the ${monthName(latestMonth)} payslip — nett basic falls back to the PCB formula estimate in the calculation.`);
-    }
+    const breakdown = nettBasicPay(latestBasic);
     lines.push({
       income_type: "basic",
       gross_amount: round2(latestBasic),
-      nett_amount: missing.length === deductions.length ? null : nett,
+      nett_amount: breakdown.nettBasic,
       frequency: "monthly",
-      label: `Basic pay — latest month (${monthName(latestMonth)}), nett after EPF/SOCSO/EIS/PCB`,
+      label: `Basic pay — latest month (${monthName(latestMonth)}), nett by standard payroll calc (EPF ${breakdown.epf}, SOCSO ${breakdown.socso}, EIS ${breakdown.eis}, PCB ${breakdown.pcb})`,
     });
   } else {
     flags.push(`No basic salary line found on the latest payslip (${monthName(latestMonth)}).`);
