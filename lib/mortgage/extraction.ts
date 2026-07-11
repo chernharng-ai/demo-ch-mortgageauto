@@ -52,7 +52,8 @@ function buildExtractionSchema(candidateDocNames: string[]) {
       client_name_on_document: { type: ["string", "null"] },
       notes: { type: ["string", "null"], description: "Anything the officer should double-check, e.g. blurry, multiple months shown, figures don't add up." },
       matched_doc_name: {
-        description: "Which checklist item this document satisfies, chosen from the candidate list. Null if none fit.",
+        description:
+          "Which checklist item this document belongs to, by document CATEGORY — e.g. any payslip files under the payslip item even if the item asks for 3 months and this is one month. Null only when no checklist item is of this document's kind.",
         anyOf: [{ type: "string", enum: candidateDocNames }, { type: "null" }],
       },
     },
@@ -90,8 +91,10 @@ export async function extractDocumentData(
       text:
         "This is a mortgage applicant's supporting document. Identify the document type and extract any income figures shown, " +
         "using the exact numbers on the document (do not apply any bank-specific multiplier). If it's not an income-bearing " +
-        "document (e.g. an IC), return an empty detected_income array. Also decide which item from this checklist the document " +
-        `satisfies: ${candidateDocNames.map((n) => `"${n}"`).join(", ")}. Return matched_doc_name as exactly one of those strings, or null if none fit.`,
+        "document (e.g. an IC), return an empty detected_income array. Also file the document under the checklist item it " +
+        `belongs to, by category: ${candidateDocNames.map((n) => `"${n}"`).join(", ")}. Match on document KIND, not quantity — ` +
+        "a single month's payslip still files under a '3 months payslip' item (use notes to flag that more months are needed). " +
+        "Return matched_doc_name as exactly one of those strings, or null only if no item is of this document's kind.",
     },
   ];
 
