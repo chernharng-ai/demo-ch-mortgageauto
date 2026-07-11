@@ -27,6 +27,9 @@ export default function TallyPanel({ tally }: { tally: TallyResult }) {
           {STATUS_ICON[tally.epf.status]} EPF contributions vs payslip deductions
           <span className="font-normal text-neutral-500"> (payslip month → statement month +1)</span>
         </div>
+        <p className="text-xs text-neutral-700 mb-1">
+          {STATUS_ICON[tally.epf.statementType.status]} Statement type: {tally.epf.statementType.detail}
+        </p>
         {tally.epf.detail && <p className="text-neutral-700">{tally.epf.detail}</p>}
         {tally.epf.months.length > 0 && (
           <ul className="space-y-0.5">

@@ -39,9 +39,17 @@ export interface TallyResult {
   ic: { status: TallyStatus; detail: string };
   epf: {
     status: TallyStatus;
+    /** Banks only accept the DETAILS statement showing the employee/employer breakdown per transaction — a summary/totals-only statement is the wrong document and must be re-requested from the client. */
+    statementType: { status: TallyStatus; detail: string };
     months: EpfMonthTally[];
     detail: string | null;
   };
+}
+
+/** True when an EPF statement extraction shows the employee/employer breakdown on every contribution row — i.e. it's the details statement banks require, not a summary. */
+export function epfStatementHasSplit(x: DocumentExtraction): boolean {
+  const rows = x.epf_contributions ?? [];
+  return rows.length > 0 && rows.every((r) => r.employee_amount != null && r.employer_amount != null);
 }
 
 /** Amounts within RM2 are treated as matching — statements round differently than payslips. */
@@ -92,6 +100,22 @@ export function runDocumentTally(documents: TallyDocument[]): TallyResult {
     ic = { status: "ok", detail: "IC front and back both present." };
   } else {
     ic = { status: "warn", detail: "IC uploaded but only one side is visible — need both front and back." };
+  }
+
+  // Statement type gate: banks only accept the DETAILS statement showing the
+  // employee/employer breakdown per transaction. A summary/totals-only
+  // statement is the wrong document — flag it so the officer re-requests.
+  const epfDocs = documents.filter(isEpfStatement);
+  let statementType: TallyResult["epf"]["statementType"];
+  if (epfDocs.length === 0) {
+    statementType = { status: "warn", detail: "No EPF statement uploaded yet." };
+  } else if (epfDocs.some((d) => epfStatementHasSplit(d.ai_extracted_data!))) {
+    statementType = { status: "ok", detail: "Details statement — employee/employer breakdown shown." };
+  } else {
+    statementType = {
+      status: "fail",
+      detail: "Wrong statement type — this shows totals only. Banks need the DETAILS statement with the employee/employer breakdown; ask the client for the correct one.",
+    };
   }
 
   // EPF: payslip month M deductions should appear on statement month M+1, figure by figure.
@@ -169,11 +193,11 @@ export function runDocumentTally(documents: TallyDocument[]): TallyResult {
   let epfStatus: TallyStatus;
   let epfDetail: string | null = null;
   if (months.length === 0) {
-    epfStatus = "warn";
+    epfStatus = statementType.status === "fail" ? "fail" : "warn";
     epfDetail = "No payslips with a readable month to tally against the EPF statement.";
   } else {
-    epfStatus = worst(months.map((m) => m.status));
+    epfStatus = worst([statementType.status, ...months.map((m) => m.status)]);
   }
 
-  return { ic, epf: { status: epfStatus, months, detail: epfDetail } };
+  return { ic, epf: { status: epfStatus, statementType, months, detail: epfDetail } };
 }

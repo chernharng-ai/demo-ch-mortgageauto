@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser } from "@/lib/supabase/profile";
 import { extractDocumentData, classifyByFilename, buildStorageFileName, type DocumentExtraction } from "@/lib/mortgage/extraction";
 import { buildChecklistTemplate, expectedPeriodLabels } from "@/lib/mortgage/checklistTemplate";
+import { epfStatementHasSplit } from "@/lib/mortgage/tally";
 import type { Case, Client } from "@/lib/mortgage/types";
 
 export interface BulkUploadResult {
@@ -27,6 +28,16 @@ const EXTENSION_MIME_TYPES: Record<string, string> = {
 function guessMimeTypeFromFileName(fileName: string): string {
   const ext = fileName.split(".").pop()?.toLowerCase();
   return (ext && EXTENSION_MIME_TYPES[ext]) || "application/octet-stream";
+}
+
+/**
+ * A totals-only EPF statement is the WRONG document — banks require the
+ * details statement with the employee/employer breakdown. Such an upload
+ * must not tick the checklist item or its year chip; the item stays ⚠️ so
+ * the officer knows to re-request the correct statement from the client.
+ */
+function isWrongEpfStatement(extraction: DocumentExtraction | null): boolean {
+  return extraction?.document_type === "epf_statement" && !epfStatementHasSplit(extraction);
 }
 
 /**
@@ -141,7 +152,7 @@ export async function bulkUploadDocuments(caseId: string, formData: FormData): P
       continue;
     }
 
-    if (matchedDocName) {
+    if (matchedDocName && !isWrongEpfStatement(extraction)) {
       await supabase
         .from("document_items")
         .update({ status: "received", received_at: new Date().toISOString() })
@@ -200,7 +211,7 @@ export async function retryExtraction(caseDocumentId: string, caseId: string) {
     })
     .eq("id", caseDocumentId);
 
-  if (matchedDocName) {
+  if (matchedDocName && !isWrongEpfStatement(extraction)) {
     await supabase
       .from("document_items")
       .update({ status: "received", received_at: new Date().toISOString() })
@@ -221,17 +232,20 @@ export async function assignDocumentMatch(caseDocumentId: string, caseId: string
   const supabase = await createClient();
 
   const { data: caseDoc } = await supabase.from("case_documents").select("ai_extracted_data").eq("id", caseDocumentId).single();
+  const extraction = (caseDoc?.ai_extracted_data as DocumentExtraction | null) ?? null;
 
   await supabase.from("case_documents").update({ matched_doc_name: docName }).eq("id", caseDocumentId);
-  await supabase
-    .from("document_items")
-    .update({ status: "received", received_at: new Date().toISOString() })
-    .eq("case_id", caseId)
-    .eq("doc_name", docName);
 
-  const periodLabel = (caseDoc?.ai_extracted_data as DocumentExtraction | null)?.period_label;
-  if (periodLabel) {
-    await tickPeriodSubItem(supabase, caseId, docName, periodLabel);
+  if (!isWrongEpfStatement(extraction)) {
+    await supabase
+      .from("document_items")
+      .update({ status: "received", received_at: new Date().toISOString() })
+      .eq("case_id", caseId)
+      .eq("doc_name", docName);
+
+    if (extraction?.period_label) {
+      await tickPeriodSubItem(supabase, caseId, docName, extraction.period_label);
+    }
   }
 
   revalidatePath(`/cases/${caseId}`);
