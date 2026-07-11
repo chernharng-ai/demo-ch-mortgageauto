@@ -11,11 +11,13 @@ import { rederiveAndCalculate } from "./income";
 /**
  * The autopilot step, per the officer: uploading documents should review
  * everything by itself — derive the case income from the payslips read so
- * far, then run the full DSR+NDI bank comparison, no manual clicks. A
- * failure here never breaks the upload itself.
+ * far, run the full DSR+NDI bank comparison, and heal the expected month
+ * chips — no manual clicks. A failure here never breaks the upload itself.
  */
 async function autoDeriveAndCalculate(caseId: string) {
   try {
+    const supabase = await createClient();
+    await seedExpectedPeriodChips(supabase, caseId);
     await rederiveAndCalculate(caseId);
   } catch (err) {
     console.error(`Auto income/calculation failed for case ${caseId}:`, err);
@@ -43,6 +45,35 @@ const EXTENSION_MIME_TYPES: Record<string, string> = {
 function guessMimeTypeFromFileName(fileName: string): string {
   const ext = fileName.split(".").pop()?.toLowerCase();
   return (ext && EXTENSION_MIME_TYPES[ext]) || "application/octet-stream";
+}
+
+/**
+ * Ensures every monthly/yearly checklist item shows its full expected chip
+ * row (1⚠️ 2⚠️ … per the 3/6-month rule, year chips for EPF) — inserts only
+ * what's missing, never touches existing chips. Runs on checklist
+ * generation, flag changes, AND after every upload, so an accidentally
+ * deleted chip heals itself.
+ */
+async function seedExpectedPeriodChips(supabase: Awaited<ReturnType<typeof createClient>>, caseId: string) {
+  const { data: caseRow } = await supabase.from("cases").select("application_date, has_variable_income").eq("id", caseId).single();
+  if (!caseRow) return;
+
+  const [{ data: items }, { data: subs }] = await Promise.all([
+    supabase.from("document_items").select("doc_name").eq("case_id", caseId),
+    supabase.from("document_sub_items").select("doc_name, label").eq("case_id", caseId),
+  ]);
+  const docNames = [...new Set((items ?? []).map((i) => i.doc_name))];
+  const existingChips = new Set((subs ?? []).map((s) => `${s.doc_name}|${s.label}`));
+
+  const toInsert = docNames.flatMap((docName) =>
+    expectedPeriodLabels(docName, caseRow.application_date, caseRow.has_variable_income)
+      .filter((label) => !existingChips.has(`${docName}|${label}`))
+      .map((label) => ({ case_id: caseId, doc_name: docName, label, status: "pending" as const, sort_order: Number(label) })),
+  );
+
+  if (toInsert.length > 0) {
+    await supabase.from("document_sub_items").insert(toInsert);
+  }
 }
 
 /**
@@ -378,25 +409,7 @@ export async function generateChecklistFromTemplate(caseId: string) {
   // Pre-seed the expected month chips (1⚠️ 2⚠️ …) on every monthly income
   // item — bank-driven and template alike — so missing months are visible at
   // a glance. Months already ticked (or manually added) are left untouched.
-  const allDocNames = [...new Set([...existingNames, ...template])];
-  const { data: existingSubs } = await supabase.from("document_sub_items").select("doc_name, label").eq("case_id", caseId);
-  const existingChips = new Set((existingSubs ?? []).map((s) => `${s.doc_name}|${s.label}`));
-
-  const chipsToInsert = allDocNames.flatMap((docName) =>
-    expectedPeriodLabels(docName, caseRow.application_date, caseRow.has_variable_income)
-      .filter((label) => !existingChips.has(`${docName}|${label}`))
-      .map((label) => ({
-        case_id: caseId,
-        doc_name: docName,
-        label,
-        status: "pending" as const,
-        sort_order: Number(label),
-      })),
-  );
-
-  if (chipsToInsert.length > 0) {
-    await supabase.from("document_sub_items").insert(chipsToInsert);
-  }
+  await seedExpectedPeriodChips(supabase, caseId);
 
   revalidatePath(`/cases/${caseId}`);
   revalidatePath("/");

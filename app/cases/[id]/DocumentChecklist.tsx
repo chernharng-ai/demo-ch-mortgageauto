@@ -15,12 +15,18 @@ interface DocGroup {
   bankCount: number;
   isCustom: boolean;
   subItems: DocumentSubItem[];
+  /** Printed report date (CTOS/Experian) of the latest document filed here — tells the officer at a glance if a fresh report is needed. */
+  reportDate: string | null;
 }
 
 function icon(status: DocStatus) {
   if (status === "received") return "✅";
   if (status === "missing") return "❌";
   return "⚠️";
+}
+
+function formatReportDate(iso: string): string {
+  return `${iso.slice(5, 7)}-${iso.slice(8, 10)}-${iso.slice(0, 4)}`;
 }
 
 export default function DocumentChecklist({
@@ -41,12 +47,19 @@ export default function DocumentChecklist({
   const groups: DocGroup[] = candidateDocNames.map((docName) => {
     const groupItems = items.filter((i) => i.doc_name === docName);
     const groupSubItems = subItems.filter((s) => s.doc_name === docName).sort((a, b) => a.sort_order - b.sort_order);
+    const reportDate = caseDocuments
+      .filter((d) => d.matched_doc_name === docName)
+      .map((d) => d.ai_extracted_data?.report_date)
+      .filter((d): d is string => !!d)
+      .sort()
+      .pop() ?? null;
     return {
       docName,
       status: groupItems[0]?.status ?? "pending",
       bankCount: groupItems.length,
       isCustom: groupItems.every((i) => i.bank_id === null),
       subItems: groupSubItems,
+      reportDate,
     };
   });
 
@@ -121,6 +134,7 @@ function DocRow({ caseId, group, canEdit }: { caseId: string; group: DocGroup; c
             {icon(group.status)}
           </button>
           {group.docName}
+          {group.reportDate && <span className="text-xs text-neutral-400">report dated {formatReportDate(group.reportDate)}</span>}
         </span>
         {canEdit && group.isCustom && (
           <button
