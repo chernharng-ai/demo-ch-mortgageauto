@@ -16,11 +16,13 @@ export interface ExtractedIncomeLine {
   confidence: number;
 }
 
-/** One contribution row off an EPF details statement — the month the contribution was credited and its total amount (employer + employee combined, as EPF statements show). */
+/** One contribution row off an EPF details statement. Statements may show the employer/employee split, just a combined total, or both — capture whatever is printed so each figure can be tallied against the payslip separately. */
 export interface EpfContributionRow {
   month: string;
   year: string;
-  amount: number;
+  employee_amount: number | null;
+  employer_amount: number | null;
+  total_amount: number | null;
 }
 
 export interface DocumentExtraction {
@@ -88,7 +90,7 @@ function buildExtractionSchema(candidateDocNames: string[]) {
       },
       epf_contributions: {
         description:
-          "EPF details statements only: EVERY monthly contribution row visible, each with the month number it was credited ('2' for February), 2-digit year ('26'), and the total contribution amount for that month as shown. Null on any other document type.",
+          "EPF details statements only: EVERY monthly contribution row visible, each with the month number it was credited ('2' for February) and 2-digit year ('26'). Copy each printed figure into its own field: the employee share, the employer share, and the combined total — use null for any figure the statement does not print separately. Null on any other document type.",
         anyOf: [
           {
             type: "array",
@@ -97,9 +99,11 @@ function buildExtractionSchema(candidateDocNames: string[]) {
               properties: {
                 month: { type: "string", description: "Month number the contribution was credited, '1'-'12'." },
                 year: { type: "string", description: "2-digit year, e.g. '26'." },
-                amount: { type: "number" },
+                employee_amount: { anyOf: [{ type: "number" }, { type: "null" }], description: "Employee share as printed, or null if not shown separately." },
+                employer_amount: { anyOf: [{ type: "number" }, { type: "null" }], description: "Employer share as printed, or null if not shown separately." },
+                total_amount: { anyOf: [{ type: "number" }, { type: "null" }], description: "Combined total as printed, or null if only the split is shown." },
               },
-              required: ["month", "year", "amount"],
+              required: ["month", "year", "employee_amount", "employer_amount", "total_amount"],
               additionalProperties: false,
             },
           },

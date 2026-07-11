@@ -3,12 +3,12 @@
 //
 // EPF rule (from the officer): a payslip's EPF deduction is credited to the
 // EPF account the FOLLOWING month — Jan 26 payslip deduction appears as the
-// Feb 26 contribution row on the EPF details statement. The statement's
-// contribution amount is employer + employee combined, so the comparison is
-// payslip (employee deduction + employer contribution) vs next month's
-// statement row.
+// Feb 26 contribution row on the EPF details statement. Every figure the
+// bank officer can see must tally independently: the employee share, the
+// employer share, AND the combined total — one wrong number anywhere is
+// grounds for the bank to reject the application.
 
-import type { DocumentExtraction } from "./extraction";
+import type { DocumentExtraction, EpfContributionRow } from "./extraction";
 
 export interface TallyDocument {
   original_file_name: string;
@@ -18,15 +18,21 @@ export interface TallyDocument {
 
 export type TallyStatus = "ok" | "warn" | "fail";
 
-export interface EpfMonthTally {
-  payslipMonth: string;
-  payslipFile: string;
-  payslipEmployee: number | null;
-  payslipEmployer: number | null;
-  expectedStatementMonth: string;
+export interface EpfComponentCheck {
+  label: "employee" | "employer" | "total";
+  payslipAmount: number | null;
   statementAmount: number | null;
   status: TallyStatus;
   detail: string;
+}
+
+export interface EpfMonthTally {
+  payslipMonth: string;
+  payslipFile: string;
+  expectedStatementMonth: string;
+  checks: EpfComponentCheck[];
+  status: TallyStatus;
+  detail: string | null;
 }
 
 export interface TallyResult {
@@ -53,6 +59,29 @@ function isIc(doc: TallyDocument): boolean {
   return doc.ai_extracted_data?.document_type === "ic";
 }
 
+function worst(statuses: TallyStatus[]): TallyStatus {
+  if (statuses.includes("fail")) return "fail";
+  if (statuses.includes("warn")) return "warn";
+  return "ok";
+}
+
+function compareFigure(label: EpfComponentCheck["label"], payslipAmount: number | null, statementAmount: number | null): EpfComponentCheck | null {
+  // Statement doesn't print this figure — a format limitation, not a
+  // discrepancy; the officer can't cross-check it either. Skip.
+  if (statementAmount == null) return null;
+  if (payslipAmount == null) {
+    return { label, payslipAmount, statementAmount, status: "warn", detail: `${label}: not visible on payslip — statement shows ${statementAmount}.` };
+  }
+  const match = Math.abs(payslipAmount - statementAmount) <= EPF_TOLERANCE;
+  return {
+    label,
+    payslipAmount,
+    statementAmount,
+    status: match ? "ok" : "fail",
+    detail: match ? `${label}: ${payslipAmount} = ${statementAmount}` : `${label}: payslip ${payslipAmount} but statement ${statementAmount}`,
+  };
+}
+
 export function runDocumentTally(documents: TallyDocument[]): TallyResult {
   // IC: both sides must be present.
   const icDocs = documents.filter(isIc);
@@ -65,17 +94,16 @@ export function runDocumentTally(documents: TallyDocument[]): TallyResult {
     ic = { status: "warn", detail: "IC uploaded but only one side is visible — need both front and back." };
   }
 
-  // EPF: payslip month M deduction should appear as statement month M+1 contribution.
+  // EPF: payslip month M deductions should appear on statement month M+1, figure by figure.
   // A 2-year statement has the same month number twice (Feb 25 and Feb 26) —
   // payslips carry no year, so tally against the most recent year's row.
   const contributionRows = documents.filter(isEpfStatement).flatMap((d) => d.ai_extracted_data?.epf_contributions ?? []);
-  const statementByMonth = new Map<string, { amount: number; year: number }>();
+  const statementByMonth = new Map<string, EpfContributionRow>();
   for (const row of contributionRows) {
     const key = String(Number(row.month));
-    const year = Number(row.year);
     const existing = statementByMonth.get(key);
-    if (!existing || year > existing.year) {
-      statementByMonth.set(key, { amount: row.amount, year });
+    if (!existing || Number(row.year) > Number(existing.year)) {
+      statementByMonth.set(key, row);
     }
   }
 
@@ -87,36 +115,53 @@ export function runDocumentTally(documents: TallyDocument[]): TallyResult {
     const expectedStatementMonth = String((Number(payslipMonth) % 12) + 1);
     const employee = x.epf_employee_deduction;
     const employer = x.epf_employer_contribution;
-    const statementAmount = statementByMonth.get(expectedStatementMonth)?.amount ?? null;
+    const payslipTotal = employee != null && employer != null ? employee + employer : null;
+    const row = statementByMonth.get(expectedStatementMonth) ?? null;
 
-    let status: TallyStatus;
-    let detail: string;
-    if (employee == null) {
-      status = "warn";
-      detail = "No EPF deduction visible on this payslip.";
-    } else if (statementAmount == null) {
-      status = contributionRows.length === 0 ? "warn" : "fail";
-      detail =
-        contributionRows.length === 0
-          ? "No EPF statement contributions extracted yet."
-          : `No contribution row for month ${expectedStatementMonth} on the EPF statement.`;
-    } else if (employer != null) {
-      const expected = employee + employer;
-      status = Math.abs(expected - statementAmount) <= EPF_TOLERANCE ? "ok" : "fail";
-      detail =
-        status === "ok"
-          ? `Payslip ${employee} + ${employer} = ${expected} matches statement ${statementAmount}.`
-          : `Payslip ${employee} + ${employer} = ${expected} but statement shows ${statementAmount}.`;
-    } else {
-      // Employer portion not on the slip — check the employee share is at least contained in the total.
-      status = statementAmount > employee - EPF_TOLERANCE ? "warn" : "fail";
-      detail =
-        status === "warn"
-          ? `Employer portion not on payslip — statement total ${statementAmount} vs employee deduction ${employee}; verify manually.`
-          : `Statement total ${statementAmount} is LESS than the employee deduction ${employee} alone.`;
+    if (employee == null && employer == null) {
+      months.push({
+        payslipMonth,
+        payslipFile: doc.original_file_name,
+        expectedStatementMonth,
+        checks: [],
+        status: "warn",
+        detail: "No EPF figures visible on this payslip.",
+      });
+      continue;
     }
 
-    months.push({ payslipMonth, payslipFile: doc.original_file_name, payslipEmployee: employee, payslipEmployer: employer, expectedStatementMonth, statementAmount, status, detail });
+    if (!row) {
+      months.push({
+        payslipMonth,
+        payslipFile: doc.original_file_name,
+        expectedStatementMonth,
+        checks: [],
+        status: contributionRows.length === 0 ? "warn" : "fail",
+        detail:
+          contributionRows.length === 0
+            ? "No EPF statement contributions extracted yet."
+            : `No contribution row for month ${expectedStatementMonth} on the EPF statement.`,
+      });
+      continue;
+    }
+
+    // The statement's total may be printed, or derivable from its own split.
+    const statementTotal = row.total_amount ?? (row.employee_amount != null && row.employer_amount != null ? row.employee_amount + row.employer_amount : null);
+
+    const checks = [
+      compareFigure("employee", employee, row.employee_amount),
+      compareFigure("employer", employer, row.employer_amount),
+      compareFigure("total", payslipTotal, statementTotal),
+    ].filter((c): c is EpfComponentCheck => c !== null);
+
+    months.push({
+      payslipMonth,
+      payslipFile: doc.original_file_name,
+      expectedStatementMonth,
+      checks,
+      status: checks.length === 0 ? "warn" : worst(checks.map((c) => c.status)),
+      detail: checks.length === 0 ? "Statement row has no figures comparable to this payslip — verify manually." : null,
+    });
   }
 
   months.sort((a, b) => Number(a.payslipMonth) - Number(b.payslipMonth));
@@ -126,12 +171,8 @@ export function runDocumentTally(documents: TallyDocument[]): TallyResult {
   if (months.length === 0) {
     epfStatus = "warn";
     epfDetail = "No payslips with a readable month to tally against the EPF statement.";
-  } else if (months.some((m) => m.status === "fail")) {
-    epfStatus = "fail";
-  } else if (months.some((m) => m.status === "warn")) {
-    epfStatus = "warn";
   } else {
-    epfStatus = "ok";
+    epfStatus = worst(months.map((m) => m.status));
   }
 
   return { ic, epf: { status: epfStatus, months, detail: epfDetail } };

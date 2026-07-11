@@ -32,7 +32,8 @@ export default function TallyPanel({ tally }: { tally: TallyResult }) {
           <ul className="space-y-0.5">
             {tally.epf.months.map((m) => (
               <li key={`${m.payslipFile}-${m.payslipMonth}`} className="text-xs text-neutral-700">
-                {STATUS_ICON[m.status]} {monthName(m.payslipMonth)} payslip → {monthName(m.expectedStatementMonth)} statement: {m.detail}
+                {STATUS_ICON[m.status]} {monthName(m.payslipMonth)} payslip → {monthName(m.expectedStatementMonth)} statement:{" "}
+                {m.detail ?? m.checks.map((c) => `${STATUS_ICON[c.status]} ${c.detail}`).join(" · ")}
               </li>
             ))}
           </ul>
