@@ -32,6 +32,11 @@ export interface Case {
   applicant_type: "single" | "joint";
   property_location: "urban" | "non_urban";
   property_type: "completed" | "under_construction";
+  financing_scheme: "bank_loan" | "lppsa";
+  application_date: string;
+  is_overseas: boolean;
+  has_rental_income: boolean;
+  needs_site_visit: boolean;
   notes: string | null;
   ai_summary: string | null;
   ai_summary_status: SummaryStatus;

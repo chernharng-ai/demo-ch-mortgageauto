@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser } from "@/lib/supabase/profile";
 import { extractDocumentData, classifyByFilename, buildStorageFileName, type DocumentExtraction } from "@/lib/mortgage/extraction";
+import { buildChecklistTemplate } from "@/lib/mortgage/checklistTemplate";
+import type { Case, Client } from "@/lib/mortgage/types";
 
 export interface BulkUploadResult {
   caseDocumentId: string;
@@ -224,6 +226,67 @@ export async function deleteChecklistItem(caseId: string, docName: string) {
   const supabase = await createClient();
   await supabase.from("document_items").delete().eq("case_id", caseId).eq("doc_name", docName).is("bank_id", null);
   await supabase.from("document_sub_items").delete().eq("case_id", caseId).eq("doc_name", docName);
+
+  revalidatePath(`/cases/${caseId}`);
+  revalidatePath("/");
+}
+
+/** Updates the case-type flags that drive the checklist template and (for property type) the DSR tier lookup. */
+export async function updateCaseChecklistProfile(
+  caseId: string,
+  financingScheme: "bank_loan" | "lppsa",
+  applicationDate: string,
+  isOverseas: boolean,
+  hasRentalIncome: boolean,
+  needsSiteVisit: boolean,
+) {
+  const supabase = await createClient();
+  await supabase
+    .from("cases")
+    .update({
+      financing_scheme: financingScheme,
+      application_date: applicationDate,
+      is_overseas: isOverseas,
+      has_rental_income: hasRentalIncome,
+      needs_site_visit: needsSiteVisit,
+    })
+    .eq("id", caseId);
+
+  revalidatePath(`/cases/${caseId}`);
+}
+
+/**
+ * Inserts the officer's real document-collection checklist for this case
+ * (salary-earner/self-employed base list + overseas/subsales/site-visit/
+ * rental extras, or the LPPSA list) as case-specific items — additive to
+ * the bank-driven checklist, skipping any doc_name already present so
+ * re-running after changing a flag doesn't duplicate existing rows.
+ */
+export async function generateChecklistFromTemplate(caseId: string) {
+  const supabase = await createClient();
+
+  const { data: caseRow } = await supabase.from("cases").select("*, clients(*)").eq("id", caseId).single<Case & { clients: Client }>();
+  if (!caseRow) return;
+
+  const { data: existing } = await supabase.from("document_items").select("doc_name").eq("case_id", caseId);
+  const existingNames = new Set((existing ?? []).map((i) => i.doc_name));
+
+  const template = buildChecklistTemplate({
+    employmentType: caseRow.clients.employment_type,
+    financingScheme: caseRow.financing_scheme,
+    propertyType: caseRow.property_type,
+    isOverseas: caseRow.is_overseas,
+    hasRentalIncome: caseRow.has_rental_income,
+    needsSiteVisit: caseRow.needs_site_visit,
+  });
+
+  const toInsert = template
+    .filter((docName) => !existingNames.has(docName))
+    .map((docName) => ({ case_id: caseId, bank_id: null, doc_name: docName, status: "pending" as const }));
+
+  if (toInsert.length > 0) {
+    await supabase.from("document_items").insert(toInsert);
+  }
 
   revalidatePath(`/cases/${caseId}`);
   revalidatePath("/");
