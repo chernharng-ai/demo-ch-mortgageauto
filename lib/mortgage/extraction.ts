@@ -16,6 +16,13 @@ export interface ExtractedIncomeLine {
   confidence: number;
 }
 
+/** One contribution row off an EPF details statement — the month the contribution was credited and its total amount (employer + employee combined, as EPF statements show). */
+export interface EpfContributionRow {
+  month: string;
+  year: string;
+  amount: number;
+}
+
 export interface DocumentExtraction {
   document_type: string;
   detected_income: ExtractedIncomeLine[];
@@ -25,6 +32,14 @@ export interface DocumentExtraction {
   matched_doc_name: string | null;
   /** Short period tag for multi-month/multi-year checklist items — month number ("2" for a Feb payslip) or 2-digit year ("26" for a 2026 EPF statement). Drives the auto-ticked sub-item chips (2✅ 3✅ …). */
   period_label: string | null;
+  /** Payslip only: the employee's EPF/KWSP deduction shown on the slip. Null on other documents. */
+  epf_employee_deduction: number | null;
+  /** Payslip only: the employer's EPF/KWSP contribution if shown. Null otherwise. */
+  epf_employer_contribution: number | null;
+  /** EPF details statement only: every monthly contribution row visible. Null on other documents. Used to tally against payslip deductions (one-month lag). */
+  epf_contributions: EpfContributionRow[] | null;
+  /** IC only: true when BOTH front and back sides are visible in the document, false when only one side is. Null on non-IC documents. */
+  ic_front_and_back: boolean | null;
 }
 
 function buildExtractionSchema(candidateDocNames: string[]) {
@@ -63,8 +78,52 @@ function buildExtractionSchema(candidateDocNames: string[]) {
           "The period this document covers, as the shortest natural tag: the month number for a monthly document ('2' for a February payslip or bank statement), the 2-digit year for a yearly document ('26' for a 2026 EPF or tax statement). Null for documents with no period (IC, booking form, credit report).",
         anyOf: [{ type: "string" }, { type: "null" }],
       },
+      epf_employee_deduction: {
+        description: "Payslips only: the employee's EPF/KWSP deduction amount shown on the slip. Null on any other document type.",
+        anyOf: [{ type: "number" }, { type: "null" }],
+      },
+      epf_employer_contribution: {
+        description: "Payslips only: the employer's EPF/KWSP contribution amount if shown on the slip. Null otherwise.",
+        anyOf: [{ type: "number" }, { type: "null" }],
+      },
+      epf_contributions: {
+        description:
+          "EPF details statements only: EVERY monthly contribution row visible, each with the month number it was credited ('2' for February), 2-digit year ('26'), and the total contribution amount for that month as shown. Null on any other document type.",
+        anyOf: [
+          {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                month: { type: "string", description: "Month number the contribution was credited, '1'-'12'." },
+                year: { type: "string", description: "2-digit year, e.g. '26'." },
+                amount: { type: "number" },
+              },
+              required: ["month", "year", "amount"],
+              additionalProperties: false,
+            },
+          },
+          { type: "null" },
+        ],
+      },
+      ic_front_and_back: {
+        description: "IC documents only: true when BOTH the front and back of the IC are visible, false when only one side is. Null on non-IC documents.",
+        anyOf: [{ type: "boolean" }, { type: "null" }],
+      },
     },
-    required: ["document_type", "detected_income", "employer_name", "client_name_on_document", "notes", "matched_doc_name", "period_label"],
+    required: [
+      "document_type",
+      "detected_income",
+      "employer_name",
+      "client_name_on_document",
+      "notes",
+      "matched_doc_name",
+      "period_label",
+      "epf_employee_deduction",
+      "epf_employer_contribution",
+      "epf_contributions",
+      "ic_front_and_back",
+    ],
     additionalProperties: false,
   };
 }
@@ -102,7 +161,10 @@ export async function extractDocumentData(
         `belongs to, by category: ${candidateDocNames.map((n) => `"${n}"`).join(", ")}. Match on document KIND, not quantity — ` +
         "a single month's payslip still files under a '3 months payslip' item (use notes to flag that more months are needed). " +
         "Return matched_doc_name as exactly one of those strings, or null only if no item is of this document's kind. " +
-        "Also return period_label: the month number for a monthly document (e.g. '5' for May), the 2-digit year for a yearly one (e.g. '26' for 2026), or null if the document has no period.",
+        "Also return period_label: the month number for a monthly document (e.g. '5' for May), the 2-digit year for a yearly one (e.g. '26' for 2026), or null if the document has no period. " +
+        "On a payslip, also extract the EPF/KWSP employee deduction and (if shown) the employer contribution. " +
+        "On an EPF details statement, list every monthly contribution row (month credited, year, total amount). " +
+        "On an IC, report whether both front and back are visible.",
     },
   ];
 

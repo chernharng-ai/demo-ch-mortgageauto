@@ -13,6 +13,8 @@ import CaseSummary from "./CaseSummary";
 import CaseReviewNote from "./CaseReviewNote";
 import CommitmentsPanel from "./CommitmentsPanel";
 import CaseProfile from "./CaseProfile";
+import TallyPanel from "./TallyPanel";
+import { runDocumentTally } from "@/lib/mortgage/tally";
 
 export const dynamic = "force-dynamic";
 
@@ -79,6 +81,7 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ id:
   const bestOffer = [...eligibilities].sort((a, b) => b.max_loan_amount - a.max_loan_amount)[0];
   const bestBankName = bestOffer ? bankList.find((b) => b.id === bestOffer.bank_id)?.name : null;
   const banksComparedCount = new Set(eligibilities.map((e) => e.bank_id)).size;
+  const tally = runDocumentTally(rawCaseDocuments);
 
   return (
     <main className="min-h-screen p-6 sm:p-10 max-w-4xl mx-auto">
@@ -119,6 +122,13 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ id:
         <h2 className="text-sm font-semibold text-neutral-900 mb-3">Document Checklist</h2>
         <DocumentChecklist caseId={caseRow.id} items={docs} caseDocuments={signedCaseDocuments} subItems={subItems} canEdit={canEdit} />
       </section>
+
+      {rawCaseDocuments.length > 0 && (
+        <section className="mb-10">
+          <h2 className="text-sm font-semibold text-neutral-900 mb-3">Document Tally</h2>
+          <TallyPanel tally={tally} />
+        </section>
+      )}
 
       <section className="mb-10">
         <h2 className="text-sm font-semibold text-neutral-900 mb-3">Income Entries</h2>

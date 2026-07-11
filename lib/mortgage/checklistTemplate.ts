@@ -99,6 +99,13 @@ export function buildChecklistTemplate(input: ChecklistTemplateInput): string[] 
  */
 export function expectedPeriodLabels(docName: string, applicationDate: string, hasVariableIncome: boolean): string[] {
   const name = docName.toLowerCase();
+
+  // EPF details statement covers the latest 2 years — year chips (25⚠️ 26⚠️).
+  if (name.includes("epf")) {
+    const appYear = Number(applicationDate.slice(2, 4));
+    return [String(appYear - 1), String(appYear)];
+  }
+
   const isMonthly = name.includes("payslip") || name.includes("bank statement");
   if (!isMonthly) return [];
 
