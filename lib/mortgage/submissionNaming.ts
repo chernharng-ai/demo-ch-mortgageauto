@@ -55,7 +55,9 @@ function baseName(doc: NamableDocument): string | null {
   const reportDate = formatDate(x?.report_date || doc.created_at);
   if (haystack.includes("ctos")) return `1.CTOS (${reportDate})`;
   if (haystack.includes("experian") || haystack.includes("exp report")) return `1.EXP(${reportDate})`;
-  if (x?.document_type === "tax_form" || haystack.includes("ea form")) return x?.period_label ? `EA ${x.period_label}` : "EA";
+  // EA form and Income Tax (BE form) are DIFFERENT documents — never mix.
+  if (haystack.includes("ea form")) return x?.period_label ? `EA ${x.period_label}` : "EA";
+  if (haystack.includes("be form") || haystack.includes("income tax") || haystack.includes("borang")) return x?.period_label ? `BE ${x.period_label}` : "BE";
   if (haystack.includes("verification")) return "EVL";
   if (haystack.includes("offer letter") || haystack.includes("confirmation letter")) return "EOL";
   if (haystack.includes("booking form")) return "2.Booking Form";
