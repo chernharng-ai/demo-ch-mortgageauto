@@ -103,6 +103,11 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ id:
       </div>
 
       <section className="mb-10">
+        <h2 className="text-sm font-semibold text-neutral-900 mb-3">Case Profile</h2>
+        <CaseProfile caseId={caseRow.id} caseRow={caseRow} canEdit={canEdit} />
+      </section>
+
+      <section className="mb-10">
         <h2 className="text-sm font-semibold text-neutral-900 mb-3">Document Checklist</h2>
         <DocumentChecklist caseId={caseRow.id} items={docs} caseDocuments={signedCaseDocuments} subItems={subItems} canEdit={canEdit} />
       </section>
@@ -118,11 +123,6 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ id:
         <h2 className="text-sm font-semibold text-neutral-900 mb-3">Income Entries</h2>
         <ConsolidatedIncome caseId={caseRow.id} proposal={incomeProposal} canEdit={canEdit} />
         <IncomeEntries caseId={caseRow.id} entries={income} canEdit={canEdit} />
-      </section>
-
-      <section className="mb-10">
-        <h2 className="text-sm font-semibold text-neutral-900 mb-3">Case Profile</h2>
-        <CaseProfile caseId={caseRow.id} caseRow={caseRow} canEdit={canEdit} />
       </section>
 
       <section className="mb-10">
