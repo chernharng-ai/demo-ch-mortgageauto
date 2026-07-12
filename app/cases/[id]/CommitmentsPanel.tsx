@@ -27,17 +27,21 @@ export default function CommitmentsPanel({ caseId, commitments, canEdit }: { cas
   return (
     <div className="space-y-3">
       <p className="text-xs text-neutral-500">
-        Existing monthly debt commitments (car loan, credit card, PTPTN, personal loan…) — subtracted from affordable instalment before DSR/NDI are checked.
+        Existing monthly debt commitments — auto-read from the client&apos;s CTOS/Experian report on upload (loans at their instalment, cards at 5% of
+        outstanding) and subtracted before DSR/NDI are checked. Add anything the report misses below.
       </p>
 
       {commitments.length === 0 ? (
-        <p className="text-sm text-neutral-500">No commitments recorded.</p>
+        <p className="text-sm text-neutral-500">No commitments recorded — upload a CTOS/Experian report to auto-fill, or add manually below.</p>
       ) : (
         <ul className="space-y-2">
           {commitments.map((c) => (
             <li key={c.id} className="flex items-center justify-between gap-3 rounded-md border border-neutral-200 px-3 py-2">
               <span className="text-sm text-neutral-800">
                 {c.description} — <span className="font-medium">{formatMYR(c.monthly_amount)}/mo</span>
+                {c.source === "credit_report" && (
+                  <span className="ml-2 text-[10px] rounded-full px-1.5 py-0.5 font-medium bg-neutral-100 text-neutral-600">auto from credit report</span>
+                )}
               </span>
               {canEdit && (
                 <button

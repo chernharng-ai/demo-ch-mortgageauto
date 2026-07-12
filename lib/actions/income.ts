@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser } from "@/lib/supabase/profile";
 import { suggestIncomeType, isAnomalousAmount } from "@/lib/mortgage/assist";
 import { consolidatePayslipIncome } from "@/lib/mortgage/consolidate";
+import { deriveCommitments } from "@/lib/mortgage/commitments";
 import { runCalculations } from "./calculations";
 import type { DocumentExtraction } from "@/lib/mortgage/extraction";
 import type { IncomeType } from "@/lib/mortgage/types";
@@ -153,8 +154,50 @@ export async function applyConsolidatedIncome(caseId: string): Promise<number> {
   return proposal.lines.length;
 }
 
-/** Full autopilot step: derive income from documents, then run the DSR+NDI bank comparison — used after every upload and from the UI's re-run button. */
+/**
+ * Auto-derives the client's existing commitments from the credit report's
+ * CCRIS facility list (loans at their instalment, cards at 5% of
+ * outstanding — see lib/mortgage/commitments.ts). Replaces only its own
+ * previous rows; manually entered commitments are never touched.
+ */
+export async function applyCreditCommitments(caseId: string): Promise<number> {
+  const user = await getCurrentUser();
+  const supabase = await createClient();
+
+  const { data: docs } = await supabase.from("case_documents").select("original_file_name, ai_extracted_data").eq("case_id", caseId);
+  const fileNames = new Map<DocumentExtraction, string>();
+  const extractions: DocumentExtraction[] = [];
+  for (const d of docs ?? []) {
+    const x = d.ai_extracted_data as DocumentExtraction | null;
+    if (x) {
+      extractions.push(x);
+      fileNames.set(x, d.original_file_name);
+    }
+  }
+
+  const proposal = deriveCommitments(extractions, fileNames);
+  if (proposal.lines.length === 0 && proposal.sourceLabel === null) return 0;
+
+  await supabase.from("case_commitments").delete().eq("case_id", caseId).eq("source", "credit_report");
+  if (proposal.lines.length > 0) {
+    await supabase.from("case_commitments").insert(
+      proposal.lines.map((line) => ({
+        case_id: caseId,
+        user_id: user?.id ?? null,
+        description: `${line.description} · from ${proposal.sourceLabel}`,
+        monthly_amount: line.monthly_amount,
+        source: "credit_report",
+      })),
+    );
+  }
+
+  revalidatePath(`/cases/${caseId}`);
+  return proposal.lines.length;
+}
+
+/** Full autopilot step: derive commitments from the credit report and income from the payslips, then run the DSR+NDI bank comparison — used after every upload and from the UI's re-run button. */
 export async function rederiveAndCalculate(caseId: string) {
+  await applyCreditCommitments(caseId);
   const derived = await applyConsolidatedIncome(caseId);
   if (derived > 0) {
     await runCalculations(caseId, {});

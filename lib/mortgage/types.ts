@@ -154,6 +154,7 @@ export interface CaseCommitment {
   case_id: string;
   description: string;
   monthly_amount: number;
+  source: "manual" | "credit_report";
   created_at: string;
 }
 

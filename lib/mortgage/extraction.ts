@@ -23,6 +23,14 @@ export interface SalaryCredit {
   description: string;
 }
 
+/** One credit facility off a CTOS/Experian report's CCRIS section — used to auto-derive the client's existing monthly commitments. */
+export interface CreditFacility {
+  facility_type: string;
+  lender: string;
+  instalment_amount: number | null;
+  outstanding_balance: number | null;
+}
+
 /** One contribution row off an EPF details statement. Statements may show the employer/employee split, just a combined total, or both — capture whatever is printed so each figure can be tallied against the payslip separately. */
 export interface EpfContributionRow {
   month: string;
@@ -63,6 +71,8 @@ export interface DocumentExtraction {
   ic_front_and_back: boolean | null;
   /** Credit reports (CTOS/Experian) only: the report/order date printed on the document as YYYY-MM-DD — tells the officer whether a fresh report is needed before submission. Null on other documents. */
   report_date: string | null;
+  /** Credit reports only: every outstanding credit facility on the CCRIS/banking section — used to auto-derive the client's existing monthly commitments. Null on other documents. */
+  credit_facilities: CreditFacility[] | null;
 }
 
 function buildExtractionSchema(candidateDocNames: string[]) {
@@ -173,6 +183,27 @@ function buildExtractionSchema(candidateDocNames: string[]) {
           "Credit reports (CTOS/Experian) only: the report/order date printed on the document header, as YYYY-MM-DD (e.g. a CTOS 'Date: 2026-05-15 16:53:24' → '2026-05-15'; an Experian 'Order Date: 2026-06-29 01:28:22' → '2026-06-29'). Null on any other document type.",
         anyOf: [{ type: "string" }, { type: "null" }],
       },
+      credit_facilities: {
+        description:
+          "Credit reports (CTOS/Experian) only: EVERY outstanding credit facility listed in the CCRIS/banking payment records section — active loans, credit cards, overdrafts, PTPTN etc. For each: the facility type as printed (e.g. 'hire purchase', 'housing loan', 'credit card', 'personal loan', 'overdraft', 'ptptn'), the lender/bank name, the monthly instalment amount (-1 if not shown), and the outstanding balance (-1 if not shown). Exclude fully settled/closed facilities. Null on any other document type.",
+        anyOf: [
+          {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                facility_type: { type: "string" },
+                lender: { type: "string" },
+                instalment_amount: { type: "number", description: "Monthly instalment as printed, or -1 if not shown." },
+                outstanding_balance: { type: "number", description: "Outstanding balance as printed, or -1 if not shown." },
+              },
+              required: ["facility_type", "lender", "instalment_amount", "outstanding_balance"],
+              additionalProperties: false,
+            },
+          },
+          { type: "null" },
+        ],
+      },
     },
     required: [
       "document_type",
@@ -187,6 +218,7 @@ function buildExtractionSchema(candidateDocNames: string[]) {
       "epf_contributions",
       "ic_front_and_back",
       "report_date",
+      "credit_facilities",
     ],
     additionalProperties: false,
   };
@@ -230,7 +262,7 @@ export async function extractDocumentData(
         "On a bank statement, list EVERY deposit/incoming credit row — money in only, straight off the deposit column, no filtering (date, exact amount, description including additional details as printed). " +
         "On an EPF details statement, list every monthly contribution row (month credited, year, employee share, employer share, total — use -1 for any figure not printed). " +
         "On an IC, report whether both front and back are visible. " +
-        "On a credit report (CTOS/Experian), extract the report/order date printed on the header as report_date (YYYY-MM-DD).",
+        "On a credit report (CTOS/Experian), extract the report/order date printed on the header as report_date (YYYY-MM-DD), and list EVERY outstanding credit facility from the CCRIS/banking section (type, lender, monthly instalment, outstanding balance — use -1 for figures not shown; exclude settled facilities).",
     },
   ];
 
@@ -306,6 +338,15 @@ function normalizeRawExtraction(raw: any): DocumentExtraction {
       : null,
     ic_front_and_back: raw.ic_front_and_back ?? null,
     report_date: raw.report_date ?? null,
+    credit_facilities: raw.credit_facilities
+      ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        raw.credit_facilities.map((f: any) => ({
+          facility_type: f.facility_type,
+          lender: f.lender,
+          instalment_amount: unsentinel(f.instalment_amount),
+          outstanding_balance: unsentinel(f.outstanding_balance),
+        }))
+      : null,
   };
 }
 
