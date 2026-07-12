@@ -42,6 +42,23 @@ export default function TallyPanel({ tally }: { tally: TallyResult }) {
           </ul>
         )}
       </div>
+
+      <div className={`rounded-md border px-3 py-2 text-sm ${STATUS_STYLE[tally.salary.status]}`}>
+        <div className="font-medium mb-1">
+          {STATUS_ICON[tally.salary.status]} Salary credited to bank
+          <span className="font-normal text-neutral-500"> (payslip nett pay & advance vs bank statement)</span>
+        </div>
+        {tally.salary.detail && <p className="text-neutral-700">{tally.salary.detail}</p>}
+        {tally.salary.months.length > 0 && (
+          <ul className="space-y-0.5">
+            {tally.salary.months.map((m) => (
+              <li key={`${m.payslipFile}-${m.payslipMonth}`} className="text-xs text-neutral-700">
+                {STATUS_ICON[m.status]} {monthName(m.payslipMonth)} payslip: {m.detail}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </div>
   );
 }

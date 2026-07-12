@@ -16,6 +16,13 @@ export interface ExtractedIncomeLine {
   confidence: number;
 }
 
+/** One salary-like incoming credit off a bank statement — used to tally that the payslip's nett pay (and any advance) was actually credited, and on what date. */
+export interface SalaryCredit {
+  date: string;
+  amount: number;
+  description: string;
+}
+
 /** One contribution row off an EPF details statement. Statements may show the employer/employee split, just a combined total, or both — capture whatever is printed so each figure can be tallied against the payslip separately. */
 export interface EpfContributionRow {
   month: string;
@@ -44,6 +51,12 @@ export interface DocumentExtraction {
   eis_deduction: number | null;
   /** Payslip only: the PCB/MTD income tax deduction. Null otherwise. */
   pcb_deduction: number | null;
+  /** Payslip only: the NETT PAY / take-home amount printed on the slip. Null otherwise. */
+  nett_pay: number | null;
+  /** Payslip only: a salary advance amount if the slip shows one (mid-month advance paid separately). Null otherwise. */
+  salary_advance: number | null;
+  /** Bank statement only: incoming credits that look like salary/payroll/advance payments, each with the credit date. Null on other documents. */
+  salary_credits: SalaryCredit[] | null;
   /** EPF details statement only: every monthly contribution row visible. Null on other documents. Used to tally against payslip deductions (one-month lag). */
   epf_contributions: EpfContributionRow[] | null;
   /** IC only: true when BOTH front and back sides are visible in the document, false when only one side is. Null on non-IC documents. */
@@ -88,25 +101,46 @@ function buildExtractionSchema(candidateDocNames: string[]) {
           "The period this document covers, as the shortest natural tag: the month number for a monthly document ('2' for a February payslip or bank statement), the 2-digit year for a yearly document ('26' for a 2026 EPF or tax statement). Null for documents with no period (IC, booking form, credit report).",
         anyOf: [{ type: "string" }, { type: "null" }],
       },
-      epf_employee_deduction: {
-        description: "Payslips only: the employee's EPF/KWSP deduction amount shown on the slip. Null on any other document type.",
-        anyOf: [{ type: "number" }, { type: "null" }],
+      payslip_figures: {
+        description:
+          "Payslips only (null on any other document type): the key figures printed on the slip. For any figure NOT printed on the slip, use -1 (meaning 'not shown') — never guess.",
+        anyOf: [
+          {
+            type: "object",
+            properties: {
+              epf_employee: { type: "number", description: "Employee EPF/KWSP deduction, or -1 if not shown." },
+              epf_employer: { type: "number", description: "Employer EPF/KWSP contribution, or -1 if not shown." },
+              socso: { type: "number", description: "Employee SOCSO/PERKESO deduction, or -1 if not shown." },
+              eis: { type: "number", description: "Employee EIS/SIP deduction, or -1 if not shown." },
+              pcb: { type: "number", description: "PCB/MTD monthly income tax deduction, or -1 if not shown." },
+              nett_pay: { type: "number", description: "NETT PAY / take-home amount, or -1 if not shown." },
+              salary_advance: { type: "number", description: "Salary advance paid separately (e.g. mid-month), or -1 if none shown." },
+            },
+            required: ["epf_employee", "epf_employer", "socso", "eis", "pcb", "nett_pay", "salary_advance"],
+            additionalProperties: false,
+          },
+          { type: "null" },
+        ],
       },
-      epf_employer_contribution: {
-        description: "Payslips only: the employer's EPF/KWSP contribution amount if shown on the slip. Null otherwise.",
-        anyOf: [{ type: "number" }, { type: "null" }],
-      },
-      socso_deduction: {
-        description: "Payslips only: the employee's SOCSO/PERKESO deduction amount. Null otherwise.",
-        anyOf: [{ type: "number" }, { type: "null" }],
-      },
-      eis_deduction: {
-        description: "Payslips only: the employee's EIS/SIP deduction amount. Null otherwise.",
-        anyOf: [{ type: "number" }, { type: "null" }],
-      },
-      pcb_deduction: {
-        description: "Payslips only: the PCB/MTD monthly income tax deduction amount. Null otherwise.",
-        anyOf: [{ type: "number" }, { type: "null" }],
+      salary_credits: {
+        description:
+          "Bank statements only: EVERY incoming credit that could be a salary, payroll, or salary-advance payment (description mentions salary/gaji/payroll/the employer, or is a sizeable round credit) — with the credit date as YYYY-MM-DD, the amount, and the transaction description as printed. Null on other documents.",
+        anyOf: [
+          {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                date: { type: "string", description: "Credit date, YYYY-MM-DD." },
+                amount: { type: "number" },
+                description: { type: "string" },
+              },
+              required: ["date", "amount", "description"],
+              additionalProperties: false,
+            },
+          },
+          { type: "null" },
+        ],
       },
       epf_contributions: {
         description:
@@ -119,9 +153,9 @@ function buildExtractionSchema(candidateDocNames: string[]) {
               properties: {
                 month: { type: "string", description: "Month number the contribution was credited, '1'-'12'." },
                 year: { type: "string", description: "2-digit year, e.g. '26'." },
-                employee_amount: { anyOf: [{ type: "number" }, { type: "null" }], description: "Employee share as printed, or null if not shown separately." },
-                employer_amount: { anyOf: [{ type: "number" }, { type: "null" }], description: "Employer share as printed, or null if not shown separately." },
-                total_amount: { anyOf: [{ type: "number" }, { type: "null" }], description: "Combined total as printed, or null if only the split is shown." },
+                employee_amount: { type: "number", description: "Employee share as printed, or -1 if not shown separately." },
+                employer_amount: { type: "number", description: "Employer share as printed, or -1 if not shown separately." },
+                total_amount: { type: "number", description: "Combined total as printed, or -1 if only the split is shown." },
               },
               required: ["month", "year", "employee_amount", "employer_amount", "total_amount"],
               additionalProperties: false,
@@ -148,11 +182,8 @@ function buildExtractionSchema(candidateDocNames: string[]) {
       "notes",
       "matched_doc_name",
       "period_label",
-      "epf_employee_deduction",
-      "epf_employer_contribution",
-      "socso_deduction",
-      "eis_deduction",
-      "pcb_deduction",
+      "payslip_figures",
+      "salary_credits",
       "epf_contributions",
       "ic_front_and_back",
       "report_date",
@@ -195,8 +226,9 @@ export async function extractDocumentData(
         "a single month's payslip still files under a '3 months payslip' item (use notes to flag that more months are needed). " +
         "Return matched_doc_name as exactly one of those strings, or null only if no item is of this document's kind. " +
         "Also return period_label: the month number for a monthly document (e.g. '5' for May), the 2-digit year for a yearly one (e.g. '26' for 2026), or null if the document has no period. " +
-        "On a payslip, also extract every employee deduction shown: EPF/KWSP employee deduction, the employer EPF contribution if shown, SOCSO/PERKESO, EIS/SIP, and PCB/MTD income tax. " +
-        "On an EPF details statement, list every monthly contribution row (month credited, year, total amount). " +
+        "On a payslip, fill payslip_figures with every figure printed (EPF employee deduction, employer EPF contribution, SOCSO, EIS, PCB, NETT PAY, salary advance) — use -1 for any figure the slip does not print. " +
+        "On a bank statement, list every incoming credit that could be salary/payroll/advance (date, amount, description as printed). " +
+        "On an EPF details statement, list every monthly contribution row (month credited, year, employee share, employer share, total — use -1 for any figure not printed). " +
         "On an IC, report whether both front and back are visible. " +
         "On a credit report (CTOS/Experian), extract the report/order date printed on the header as report_date (YYYY-MM-DD).",
     },
@@ -206,7 +238,9 @@ export async function extractDocumentData(
     // Haiku keeps this near-zero cost — reading numbers off a payslip
     // doesn't need Opus-tier reasoning.
     model: "claude-haiku-4-5",
-    max_tokens: 1024,
+    // Bank statements can carry many salary-credit rows on top of the other
+    // fields — leave generous headroom so the JSON never truncates.
+    max_tokens: 2048,
     output_config: { format: { type: "json_schema", schema: buildExtractionSchema(candidateDocNames) } },
     messages: [{ role: "user", content }],
   });
@@ -215,10 +249,51 @@ export async function extractDocumentData(
   if (!textBlock) return null;
 
   try {
-    return JSON.parse(textBlock.text) as DocumentExtraction;
+    return normalizeRawExtraction(JSON.parse(textBlock.text));
   } catch {
     return null;
   }
+}
+
+/** -1 is the schema's sentinel for "not printed on the document" (the structured-output API caps union-typed fields, so nested figures can't be nullable). */
+function unsentinel(v: number | null | undefined): number | null {
+  return v == null || v === -1 ? null : v;
+}
+
+/** Maps the raw schema shape (nested payslip_figures, -1 sentinels) onto the flat DocumentExtraction interface the rest of the app consumes. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function normalizeRawExtraction(raw: any): DocumentExtraction {
+  const pf = raw.payslip_figures ?? null;
+  return {
+    document_type: raw.document_type,
+    detected_income: raw.detected_income ?? [],
+    employer_name: raw.employer_name ?? null,
+    client_name_on_document: raw.client_name_on_document ?? null,
+    notes: raw.notes ?? null,
+    matched_doc_name: raw.matched_doc_name ?? null,
+    period_label: raw.period_label ?? null,
+    epf_employee_deduction: unsentinel(pf?.epf_employee),
+    epf_employer_contribution: unsentinel(pf?.epf_employer),
+    socso_deduction: unsentinel(pf?.socso),
+    eis_deduction: unsentinel(pf?.eis),
+    pcb_deduction: unsentinel(pf?.pcb),
+    nett_pay: unsentinel(pf?.nett_pay),
+    salary_advance: unsentinel(pf?.salary_advance),
+    salary_credits: raw.salary_credits ?? null,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    epf_contributions: raw.epf_contributions
+      ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        raw.epf_contributions.map((r: any) => ({
+          month: r.month,
+          year: r.year,
+          employee_amount: unsentinel(r.employee_amount),
+          employer_amount: unsentinel(r.employer_amount),
+          total_amount: unsentinel(r.total_amount),
+        }))
+      : null,
+    ic_front_and_back: raw.ic_front_and_back ?? null,
+    report_date: raw.report_date ?? null,
+  };
 }
 
 /**

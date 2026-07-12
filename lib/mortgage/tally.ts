@@ -35,6 +35,13 @@ export interface EpfMonthTally {
   detail: string | null;
 }
 
+export interface SalaryCreditMonth {
+  payslipMonth: string;
+  payslipFile: string;
+  status: TallyStatus;
+  detail: string;
+}
+
 export interface TallyResult {
   ic: { status: TallyStatus; detail: string };
   epf: {
@@ -42,6 +49,12 @@ export interface TallyResult {
     /** Banks only accept the DETAILS statement showing the employee/employer breakdown per transaction — a summary/totals-only statement is the wrong document and must be re-requested from the client. */
     statementType: { status: TallyStatus; detail: string };
     months: EpfMonthTally[];
+    detail: string | null;
+  };
+  /** Payslip nett pay (and any advance) must actually be credited into the bank account — matched against the statement's salary credits, with the credit date shown. */
+  salary: {
+    status: TallyStatus;
+    months: SalaryCreditMonth[];
     detail: string | null;
   };
 }
@@ -199,5 +212,80 @@ export function runDocumentTally(documents: TallyDocument[]): TallyResult {
     epfStatus = worst([statementType.status, ...months.map((m) => m.status)]);
   }
 
-  return { ic, epf: { status: epfStatus, statementType, months, detail: epfDetail } };
+  // Salary crediting: the payslip's nett pay (and any advance) must appear
+  // as a credit on the bank statement — salary for month M lands in month M
+  // (typically month-end) or the first days of month M+1.
+  const isBankStatement = (doc: TallyDocument) => doc.ai_extracted_data?.document_type === "bank_statement";
+  const statementMonths = new Set(
+    documents.filter(isBankStatement).map((d) => (d.ai_extracted_data?.period_label ? String(Number(d.ai_extracted_data.period_label)) : null)).filter(Boolean),
+  );
+  const allCredits = documents.filter(isBankStatement).flatMap((d) => d.ai_extracted_data?.salary_credits ?? []);
+  const displayDate = (iso: string) => `${iso.slice(5, 7)}-${iso.slice(8, 10)}-${iso.slice(0, 4)}`;
+
+  const findCredit = (payslipMonth: number, amount: number) =>
+    allCredits.find((c) => {
+      if (Math.abs(c.amount - amount) > EPF_TOLERANCE) return false;
+      const creditMonth = Number(c.date.slice(5, 7));
+      const creditDay = Number(c.date.slice(8, 10));
+      const nextMonth = (payslipMonth % 12) + 1;
+      return creditMonth === payslipMonth || (creditMonth === nextMonth && creditDay <= 7);
+    }) ?? null;
+
+  const salaryMonths: SalaryCreditMonth[] = [];
+  for (const doc of documents.filter(isPayslip)) {
+    const x = doc.ai_extracted_data!;
+    if (!x.period_label) continue;
+    const m = Number(x.period_label);
+    const nextM = String((m % 12) + 1);
+    // Salary for month M is credited at the end of M (needs M's statement)
+    // or the first days of M+1 — a definite FAIL needs M's own statement
+    // present; only-next-month coverage can't rule a month-end credit out.
+    const ownMonthCovered = statementMonths.has(String(m));
+    const anyCoverage = ownMonthCovered || statementMonths.has(nextM);
+
+    if (x.nett_pay == null) {
+      salaryMonths.push({ payslipMonth: String(m), payslipFile: doc.original_file_name, status: "warn", detail: "Nett pay not visible on this payslip." });
+      continue;
+    }
+
+    const parts: string[] = [];
+    let status: TallyStatus = "ok";
+
+    const missDetail = (label: string, amount: number) =>
+      ownMonthCovered
+        ? `${label} ${amount} NOT found credited on the bank statement`
+        : anyCoverage
+          ? `${label} ${amount} not in early-month credits; the month's own statement is missing`
+          : `${label} ${amount} — no bank statement covering this month to check against`;
+
+    const nettCredit = findCredit(m, x.nett_pay);
+    if (nettCredit) {
+      parts.push(`nett ${x.nett_pay} credited ${displayDate(nettCredit.date)} (${nettCredit.description})`);
+    } else {
+      parts.push(missDetail("nett", x.nett_pay));
+      status = ownMonthCovered ? "fail" : "warn";
+    }
+
+    if (x.salary_advance != null && x.salary_advance > 0) {
+      const advCredit = findCredit(m, x.salary_advance);
+      if (advCredit) {
+        parts.push(`advance ${x.salary_advance} credited ${displayDate(advCredit.date)}`);
+      } else {
+        parts.push(missDetail("advance", x.salary_advance));
+        status = worst([status, ownMonthCovered ? "fail" : "warn"]);
+      }
+    }
+
+    salaryMonths.push({ payslipMonth: String(m), payslipFile: doc.original_file_name, status, detail: parts.join(" · ") });
+  }
+  salaryMonths.sort((a, b) => Number(a.payslipMonth) - Number(b.payslipMonth));
+
+  const salaryStatus: TallyStatus = salaryMonths.length === 0 ? "warn" : worst(salaryMonths.map((s) => s.status));
+  const salaryDetail = salaryMonths.length === 0 ? "No payslips with a readable month to check salary crediting." : null;
+
+  return {
+    ic,
+    epf: { status: epfStatus, statementType, months, detail: epfDetail },
+    salary: { status: salaryStatus, months: salaryMonths, detail: salaryDetail },
+  };
 }
