@@ -59,7 +59,7 @@ export interface Case {
   created_at: string;
 }
 
-export type IncomeType = "basic" | "allowance" | "commission" | "rental" | "net_profit" | "other";
+export type IncomeType = "basic" | "allowance" | "commission" | "rental" | "net_profit" | "other" | "bonus" | "fd_saving" | "asb";
 export type Frequency = "monthly" | "annual";
 
 export type ReviewStatus = "unreviewed" | "accepted" | "overridden";

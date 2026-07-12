@@ -1,20 +1,30 @@
 "use client";
 
-import { useActionState, useRef, useState, useTransition } from "react";
+import { useActionState, useState, useTransition } from "react";
 import { addIncomeEntry, deleteIncomeEntry, type AddIncomeState } from "@/lib/actions/income";
-import { suggestIncomeType } from "@/lib/mortgage/assist";
 import type { IncomeEntry } from "@/lib/mortgage/types";
 
+// Manual entry covers only the EXTRA income the payslips can't show —
+// salary income (basic/allowances/OT/commission) is auto-derived from the
+// uploaded payslips by the autopilot.
 const INCOME_TYPES = [
-  { value: "basic", label: "Basic salary" },
-  { value: "allowance", label: "Allowance" },
-  { value: "commission", label: "Commission" },
-  { value: "rental", label: "Rental income" },
-  { value: "net_profit", label: "Net profit (self-employed)" },
-  { value: "other", label: "Other" },
+  { value: "rental", label: "Rental income", hint: "Monthly rental — each bank applies its own rental multiplier (mostly 80%, with tenancy agreement stamped)." },
+  { value: "bonus", label: "Bonus income", hint: "Enter the yearly bonus (average of the last 2 years) with frequency Annual — each bank applies its own bonus rate." },
+  { value: "fd_saving", label: "Saving income (FD)", hint: "Enter the yearly FD/savings interest with frequency Annual." },
+  { value: "asb", label: "ASB income", hint: "Enter the yearly ASB dividend with frequency Annual (most banks take dividend ÷ 12)." },
 ];
 
-const INCOME_TYPE_LABEL: Record<string, string> = Object.fromEntries(INCOME_TYPES.map((t) => [t.value, t.label]));
+const INCOME_TYPE_LABEL: Record<string, string> = {
+  basic: "Basic salary",
+  allowance: "Allowance",
+  commission: "Commission",
+  rental: "Rental income",
+  net_profit: "Net profit (self-employed)",
+  other: "Other",
+  bonus: "Bonus income",
+  fd_saving: "Saving income (FD)",
+  asb: "ASB income",
+};
 
 function formatMYR(n: number) {
   return new Intl.NumberFormat("en-MY", { style: "currency", currency: "MYR", maximumFractionDigits: 0 }).format(n);
@@ -29,34 +39,24 @@ export default function IncomeEntries({ caseId, entries, canEdit }: { caseId: st
   const initialState: AddIncomeState = {};
   const [state, formAction, pending] = useActionState(addIncomeEntry.bind(null, caseId), initialState);
   const [isDeleting, startTransition] = useTransition();
+  const [selectedType, setSelectedType] = useState("rental");
 
-  const [suggestion, setSuggestion] = useState<ReturnType<typeof suggestIncomeType>>(null);
-  const typeSelectRef = useRef<HTMLSelectElement>(null);
-
-  function handleDescriptionChange(text: string) {
-    setSuggestion(suggestIncomeType(text));
-  }
-
-  function applySuggestion() {
-    if (suggestion && typeSelectRef.current) {
-      typeSelectRef.current.value = suggestion.type;
-      setSuggestion(null);
-    }
-  }
+  const hint = INCOME_TYPES.find((t) => t.value === selectedType)?.hint;
 
   return (
     <div className="space-y-4">
       {entries.length === 0 ? (
-        <p className="text-sm text-neutral-500">No income entries yet — add one below.</p>
+        <p className="text-sm text-neutral-500">No income entries yet — salary income appears here automatically once payslips are uploaded.</p>
       ) : (
         <ul className="space-y-2">
           {entries.map((entry) => (
             <li key={entry.id} className="flex items-center justify-between gap-3 rounded-md border border-neutral-200 px-3 py-2">
               <div className="text-sm">
-                <span className="font-medium text-neutral-900 capitalize">{entry.income_type.replace("_", " ")}</span>{" "}
+                <span className="font-medium text-neutral-900">{INCOME_TYPE_LABEL[entry.income_type] ?? entry.income_type}</span>{" "}
                 <span className="text-neutral-600">
                   {formatMYR(entry.gross_amount)} / {entry.frequency}
                 </span>
+                {entry.nett_amount != null && <span className="text-xs text-neutral-400"> · nett {formatMYR(entry.nett_amount)}</span>}
                 {entry.supporting_doc && <div className="text-xs text-neutral-400">{entry.supporting_doc}</div>}
                 {entry.ai_suggested_type && (
                   <span className={`inline-block mt-1 text-[10px] rounded-full px-1.5 py-0.5 font-medium ${REVIEW_BADGE[entry.ai_suggested_type_review_status] ?? "bg-neutral-100 text-neutral-600"}`}>
@@ -87,10 +87,10 @@ export default function IncomeEntries({ caseId, entries, canEdit }: { caseId: st
         <form action={formAction} className="grid grid-cols-2 sm:grid-cols-4 gap-2 items-start bg-neutral-50 rounded-md p-3">
           <div>
             <select
-              ref={typeSelectRef}
               name="income_type"
+              value={selectedType}
+              onChange={(e) => setSelectedType(e.target.value)}
               className="w-full rounded-md border border-neutral-300 px-2 py-1.5 text-sm bg-white"
-              defaultValue="basic"
             >
               {INCOME_TYPES.map((t) => (
                 <option key={t.value} value={t.value}>
@@ -119,21 +119,10 @@ export default function IncomeEntries({ caseId, entries, canEdit }: { caseId: st
             type="text"
             name="supporting_doc"
             placeholder="Supporting doc (optional)"
-            onChange={(e) => handleDescriptionChange(e.target.value)}
             className="rounded-md border border-neutral-300 px-2 py-1.5 text-sm"
           />
 
-          {suggestion && (
-            <div className="col-span-2 sm:col-span-4 flex items-center gap-2 text-xs text-neutral-600 bg-white border border-dashed border-neutral-300 rounded-md px-2 py-1.5">
-              <span>
-                Suggested type: <span className="font-medium capitalize">{INCOME_TYPE_LABEL[suggestion.type] ?? suggestion.type}</span>{" "}
-                ({Math.round(suggestion.confidence * 100)}% confidence, keyword match)
-              </span>
-              <button type="button" onClick={applySuggestion} className="text-neutral-900 underline font-medium">
-                Use this
-              </button>
-            </div>
-          )}
+          {hint && <p className="col-span-2 sm:col-span-4 text-xs text-neutral-500">{hint}</p>}
 
           <button
             type="submit"
