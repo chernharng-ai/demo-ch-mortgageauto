@@ -124,7 +124,7 @@ function buildExtractionSchema(candidateDocNames: string[]) {
       },
       salary_credits: {
         description:
-          "Bank statements only: EVERY incoming credit that could be a salary, payroll, or salary-advance payment (description mentions salary/gaji/payroll/the employer, or is a sizeable round credit) — with the credit date as YYYY-MM-DD, the amount, and the transaction description as printed. Null on other documents.",
+          "Bank statements only: EVERY deposit / incoming credit transaction row (money IN — the DEPOSIT/SIMPANAN column, NOT withdrawals), with the credit date as YYYY-MM-DD, the exact amount, and the description plus any additional details as printed. List them all; do not filter or judge which ones are salary. Null on other documents.",
         anyOf: [
           {
             type: "array",
@@ -227,32 +227,45 @@ export async function extractDocumentData(
         "Return matched_doc_name as exactly one of those strings, or null only if no item is of this document's kind. " +
         "Also return period_label: the month number for a monthly document (e.g. '5' for May), the 2-digit year for a yearly one (e.g. '26' for 2026), or null if the document has no period. " +
         "On a payslip, fill payslip_figures with every figure printed (EPF employee deduction, employer EPF contribution, SOCSO, EIS, PCB, NETT PAY, salary advance) — use -1 for any figure the slip does not print. " +
-        "On a bank statement, list every incoming credit that could be salary/payroll/advance (date, amount, description as printed). " +
+        "On a bank statement, list EVERY deposit/incoming credit row — money in only, straight off the deposit column, no filtering (date, exact amount, description including additional details as printed). " +
         "On an EPF details statement, list every monthly contribution row (month credited, year, employee share, employer share, total — use -1 for any figure not printed). " +
         "On an IC, report whether both front and back are visible. " +
         "On a credit report (CTOS/Experian), extract the report/order date printed on the header as report_date (YYYY-MM-DD).",
     },
   ];
 
-  const response = await client.messages.create({
-    // Haiku keeps this near-zero cost — reading numbers off a payslip
-    // doesn't need Opus-tier reasoning.
-    model: "claude-haiku-4-5",
-    // Bank statements can carry many salary-credit rows on top of the other
-    // fields — leave generous headroom so the JSON never truncates.
-    max_tokens: 2048,
-    output_config: { format: { type: "json_schema", schema: buildExtractionSchema(candidateDocNames) } },
-    messages: [{ role: "user", content }],
-  });
+  // One malformed response must not silently drop a document's data (a
+  // silent null here previously masked a real extraction failure) — log
+  // loudly and retry once before giving up.
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const response = await client.messages.create({
+      // Sonnet, not Haiku: Haiku misread bank-statement table columns (missed
+      // obvious salary credits, picked a withdrawal as a credit) — the officer's
+      // zero-mistake standard is worth the extra fraction of a sen per document.
+      model: "claude-sonnet-5",
+      // Bank statements can carry many deposit rows on top of the other
+      // fields — leave generous headroom so the JSON never truncates.
+      max_tokens: 4096,
+      output_config: { format: { type: "json_schema", schema: buildExtractionSchema(candidateDocNames) } },
+      messages: [{ role: "user", content }],
+    });
 
-  const textBlock = response.content.find((b): b is Anthropic.TextBlock => b.type === "text");
-  if (!textBlock) return null;
+    const textBlock = response.content.find((b): b is Anthropic.TextBlock => b.type === "text");
+    if (!textBlock) {
+      console.error(`Extraction attempt ${attempt}: no text block (stop_reason: ${response.stop_reason})`);
+      continue;
+    }
 
-  try {
-    return normalizeRawExtraction(JSON.parse(textBlock.text));
-  } catch {
-    return null;
+    try {
+      return normalizeRawExtraction(JSON.parse(textBlock.text));
+    } catch (err) {
+      console.error(
+        `Extraction attempt ${attempt}: JSON parse failed (stop_reason: ${response.stop_reason}, length: ${textBlock.text.length}):`,
+        err instanceof Error ? err.message : err,
+      );
+    }
   }
+  return null;
 }
 
 /** -1 is the schema's sentinel for "not printed on the document" (the structured-output API caps union-typed fields, so nested figures can't be nullable). */
