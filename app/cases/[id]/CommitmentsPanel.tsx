@@ -8,7 +8,17 @@ function formatMYR(n: number) {
   return new Intl.NumberFormat("en-MY", { style: "currency", currency: "MYR", maximumFractionDigits: 0 }).format(n);
 }
 
-export default function CommitmentsPanel({ caseId, commitments, canEdit }: { caseId: string; commitments: CaseCommitment[]; canEdit: boolean }) {
+export default function CommitmentsPanel({
+  caseId,
+  commitments,
+  flags = [],
+  canEdit,
+}: {
+  caseId: string;
+  commitments: CaseCommitment[];
+  flags?: string[];
+  canEdit: boolean;
+}) {
   const [isPending, startTransition] = useTransition();
   const descRef = useRef<HTMLInputElement>(null);
   const amountRef = useRef<HTMLInputElement>(null);
@@ -59,6 +69,16 @@ export default function CommitmentsPanel({ caseId, commitments, canEdit }: { cas
             <span>Total</span>
             <span>{formatMYR(total)}/mo</span>
           </li>
+        </ul>
+      )}
+
+      {flags.length > 0 && (
+        <ul className="space-y-0.5">
+          {flags.map((flag, i) => (
+            <li key={i} className="text-xs text-amber-700">
+              ⚠ {flag}
+            </li>
+          ))}
         </ul>
       )}
 

@@ -29,6 +29,8 @@ export interface CreditFacility {
   lender: string;
   instalment_amount: number | null;
   outstanding_balance: number | null;
+  /** Approved credit limit (cards/overdrafts) — drives the usage % check. */
+  credit_limit: number | null;
 }
 
 /** One contribution row off an EPF details statement. Statements may show the employer/employee split, just a combined total, or both — capture whatever is printed so each figure can be tallied against the payslip separately. */
@@ -196,8 +198,9 @@ function buildExtractionSchema(candidateDocNames: string[]) {
                 lender: { type: "string" },
                 instalment_amount: { type: "number", description: "Monthly instalment as printed, or -1 if not shown." },
                 outstanding_balance: { type: "number", description: "Outstanding balance as printed, or -1 if not shown." },
+                credit_limit: { type: "number", description: "Approved credit limit (cards/overdrafts) as printed, or -1 if not shown." },
               },
-              required: ["facility_type", "lender", "instalment_amount", "outstanding_balance"],
+              required: ["facility_type", "lender", "instalment_amount", "outstanding_balance", "credit_limit"],
               additionalProperties: false,
             },
           },
@@ -262,7 +265,7 @@ export async function extractDocumentData(
         "On a bank statement, list EVERY deposit/incoming credit row — money in only, straight off the deposit column, no filtering (date, exact amount, description including additional details as printed). " +
         "On an EPF details statement, list every monthly contribution row (month credited, year, employee share, employer share, total — use -1 for any figure not printed). " +
         "On an IC, report whether both front and back are visible. " +
-        "On a credit report (CTOS/Experian), extract the report/order date printed on the header as report_date (YYYY-MM-DD), and list EVERY outstanding credit facility from the CCRIS/banking section (type, lender, monthly instalment, outstanding balance — use -1 for figures not shown; exclude settled facilities).",
+        "On a credit report (CTOS/Experian), extract the report/order date printed on the header as report_date (YYYY-MM-DD), and list EVERY outstanding credit facility from the CCRIS/banking section (type, lender, monthly instalment, outstanding balance, and for cards/overdrafts the approved credit limit — use -1 for figures not shown; exclude settled facilities).",
     },
   ];
 
@@ -275,9 +278,10 @@ export async function extractDocumentData(
       // obvious salary credits, picked a withdrawal as a credit) — the officer's
       // zero-mistake standard is worth the extra fraction of a sen per document.
       model: "claude-sonnet-5",
-      // Bank statements can carry many deposit rows on top of the other
-      // fields — leave generous headroom so the JSON never truncates.
-      max_tokens: 4096,
+      // Bank statements/credit reports can carry many rows on top of the
+      // other fields — leave generous headroom so the JSON never truncates
+      // (a full CTOS extraction has been observed to exceed 4096).
+      max_tokens: 8192,
       output_config: { format: { type: "json_schema", schema: buildExtractionSchema(candidateDocNames) } },
       messages: [{ role: "user", content }],
     });
@@ -345,6 +349,7 @@ function normalizeRawExtraction(raw: any): DocumentExtraction {
           lender: f.lender,
           instalment_amount: unsentinel(f.instalment_amount),
           outstanding_balance: unsentinel(f.outstanding_balance),
+          credit_limit: unsentinel(f.credit_limit),
         }))
       : null,
   };

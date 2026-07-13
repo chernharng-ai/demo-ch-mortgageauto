@@ -52,7 +52,7 @@ export function deriveCommitments(extractions: DocumentExtraction[], reportFileN
   const flags: string[] = [];
 
   // Group by facility kind + lender, preserving report order.
-  const groups = new Map<string, { facilityType: string; lender: string; instalments: number[]; outstandings: number[] }>();
+  const groups = new Map<string, { facilityType: string; lender: string; instalments: number[]; outstandings: number[]; limits: number[] }>();
   for (const f of latest.credit_facilities!) {
     const label = `${f.facility_type} — ${f.lender}`;
     if (isRevolving(f.facility_type)) {
@@ -68,9 +68,10 @@ export function deriveCommitments(extractions: DocumentExtraction[], reportFileN
       continue;
     }
     const key = `${f.facility_type.trim().toLowerCase()}|${f.lender.trim().toLowerCase()}`;
-    const g = groups.get(key) ?? { facilityType: f.facility_type, lender: f.lender, instalments: [], outstandings: [] };
+    const g = groups.get(key) ?? { facilityType: f.facility_type, lender: f.lender, instalments: [], outstandings: [], limits: [] };
     if (f.instalment_amount != null && f.instalment_amount > 0) g.instalments.push(f.instalment_amount);
     if (f.outstanding_balance != null && f.outstanding_balance > 0) g.outstandings.push(f.outstanding_balance);
+    if (f.credit_limit != null && f.credit_limit > 0) g.limits.push(f.credit_limit);
     groups.set(key, g);
   }
 
@@ -82,8 +83,21 @@ export function deriveCommitments(extractions: DocumentExtraction[], reportFileN
     const outstandingText =
       g.outstandings.length > 1 ? `${g.outstandings.map(fmt).join(" + ")} = ${fmt(outstandingTotal)}` : g.outstandings.length === 1 ? fmt(outstandingTotal) : "n/a";
     if (isRevolving(g.facilityType)) {
+      // Usage % against the approved limit — above 60% is a red flag banks
+      // scrutinise ("CC MAX USAGE" in the guideline sheet), so mark it ‼️.
+      const limitTotal = g.limits.reduce((a, b) => a + b, 0);
+      let usageText = "";
+      if (limitTotal > 0) {
+        const usage = (outstandingTotal / limitTotal) * 100;
+        usageText = ` ; usage ${Math.round(usage * 10) / 10}%${usage > 60 ? " ‼️" : ""}`;
+        if (usage > 60) {
+          flags.push(`CF ${cf} ${g.facilityType} — ${g.lender}: usage ${Math.round(usage * 10) / 10}% is above 60% ‼️ — ask client to reduce before submission.`);
+        }
+      } else {
+        usageText = " ; usage n/a (limit not shown)";
+      }
       lines.push({
-        description: `CF ${cf} : ${g.facilityType} — ${g.lender} ; outstanding ${outstandingText} (5%)`,
+        description: `CF ${cf} : ${g.facilityType} — ${g.lender} ; outstanding ${outstandingText} (5%)${usageText}`,
         monthly_amount: round2(outstandingTotal * REVOLVING_RATE),
       });
     } else {

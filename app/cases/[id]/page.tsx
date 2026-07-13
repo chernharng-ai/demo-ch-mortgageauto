@@ -16,6 +16,8 @@ import TallyPanel from "./TallyPanel";
 import ConsolidatedIncome from "./ConsolidatedIncome";
 import { runDocumentTally } from "@/lib/mortgage/tally";
 import { consolidatePayslipIncome } from "@/lib/mortgage/consolidate";
+import { deriveCommitments } from "@/lib/mortgage/commitments";
+import type { DocumentExtraction } from "@/lib/mortgage/extraction";
 
 export const dynamic = "force-dynamic";
 
@@ -81,6 +83,11 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ id:
     caseRow.application_date,
     caseRow.has_variable_income,
   );
+  const commitmentFileNames = new Map<DocumentExtraction, string>();
+  for (const d of rawCaseDocuments) {
+    if (d.ai_extracted_data) commitmentFileNames.set(d.ai_extracted_data, d.original_file_name);
+  }
+  const commitmentProposal = deriveCommitments([...commitmentFileNames.keys()], commitmentFileNames);
 
   return (
     <main className="min-h-screen p-6 sm:p-10 max-w-4xl mx-auto">
@@ -127,7 +134,7 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ id:
 
       <section className="mb-10">
         <h2 className="text-sm font-semibold text-neutral-900 mb-3">Existing Commitments</h2>
-        <CommitmentsPanel caseId={caseRow.id} commitments={commitments} canEdit={canEdit} />
+        <CommitmentsPanel caseId={caseRow.id} commitments={commitments} flags={commitmentProposal.flags} canEdit={canEdit} />
       </section>
 
       <section className="mb-10">
