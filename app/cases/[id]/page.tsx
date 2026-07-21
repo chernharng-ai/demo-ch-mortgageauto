@@ -17,6 +17,7 @@ import ConsolidatedIncome from "./ConsolidatedIncome";
 import { runDocumentTally } from "@/lib/mortgage/tally";
 import { consolidatePayslipIncome } from "@/lib/mortgage/consolidate";
 import { deriveCommitments } from "@/lib/mortgage/commitments";
+import { buildReviewAutoFill } from "@/lib/mortgage/autoReview";
 import type { DocumentExtraction } from "@/lib/mortgage/extraction";
 
 export const dynamic = "force-dynamic";
@@ -88,6 +89,17 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ id:
     if (d.ai_extracted_data) commitmentFileNames.set(d.ai_extracted_data, d.original_file_name);
   }
   const commitmentProposal = deriveCommitments([...commitmentFileNames.keys()], commitmentFileNames);
+  const reviewAutoFill = buildReviewAutoFill({
+    icNumber: client?.ic_number ?? null,
+    applicationDate: caseRow.application_date,
+    incomeEntries: income,
+    commitments,
+    eligibilities: loanEligibilities ?? [],
+    banks: bankList,
+    incomeProposal,
+    commitmentProposal,
+    tally,
+  });
 
   return (
     <main className="min-h-screen p-6 sm:p-10 max-w-4xl mx-auto">
@@ -158,6 +170,7 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ id:
         documentItems={docs}
         documentSubItems={subItems}
         appUrl={process.env.NEXT_PUBLIC_APP_URL ?? ""}
+        autoFill={reviewAutoFill}
         canEdit={canEdit}
       />
 

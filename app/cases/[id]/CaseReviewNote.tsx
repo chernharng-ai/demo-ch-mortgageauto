@@ -3,6 +3,7 @@
 import { useActionState, useMemo, useState } from "react";
 import { updateCaseReview, type UpdateReviewState } from "@/lib/actions/review";
 import { buildDocChecklistGroups, generateReviewNote } from "@/lib/mortgage/reviewNote";
+import type { ReviewAutoFill } from "@/lib/mortgage/autoReview";
 import type { Case, Client, DocumentItem, DocumentSubItem, ReviewClientType } from "@/lib/mortgage/types";
 
 interface FormState {
@@ -23,20 +24,26 @@ interface FormState {
   review_agent_notes: string;
 }
 
-function toFormState(caseRow: Case, defaultDocLink: string, defaultClientType: ReviewClientType): FormState {
+function toFormState(caseRow: Case, defaultDocLink: string, defaultClientType: ReviewClientType, autoFill: ReviewAutoFill): FormState {
+  // Saved edits always win; auto-computed values fill anything not set yet.
   return {
     review_client_type: caseRow.review_client_type ?? defaultClientType,
     review_doc_link: caseRow.review_doc_link ?? defaultDocLink,
-    review_age: caseRow.review_age != null ? String(caseRow.review_age) : "",
+    review_age: caseRow.review_age != null ? String(caseRow.review_age) : autoFill.age != null ? String(autoFill.age) : "",
     review_residential_address: caseRow.review_residential_address ?? "",
     review_working_address: caseRow.review_working_address ?? "",
-    review_attention: caseRow.review_attention ?? "",
-    review_gross_income: caseRow.review_gross_income ?? "",
-    review_nett_income: caseRow.review_nett_income ?? "",
-    review_max_allowed_commitment: caseRow.review_max_allowed_commitment != null ? String(caseRow.review_max_allowed_commitment) : "",
-    review_commitment_breakdown: caseRow.review_commitment_breakdown ?? "",
+    review_attention: caseRow.review_attention ?? autoFill.attention ?? "",
+    review_gross_income: caseRow.review_gross_income ?? autoFill.gross_income ?? "",
+    review_nett_income: caseRow.review_nett_income ?? autoFill.nett_income ?? "",
+    review_max_allowed_commitment:
+      caseRow.review_max_allowed_commitment != null
+        ? String(caseRow.review_max_allowed_commitment)
+        : autoFill.max_allowed_commitment != null
+          ? String(autoFill.max_allowed_commitment)
+          : "",
+    review_commitment_breakdown: caseRow.review_commitment_breakdown ?? autoFill.commitment_breakdown ?? "",
     review_project: caseRow.review_project ?? "",
-    review_bank_eligible_notes: caseRow.review_bank_eligible_notes ?? "",
+    review_bank_eligible_notes: caseRow.review_bank_eligible_notes ?? autoFill.bank_eligible_notes ?? "",
     review_risk_level: caseRow.review_risk_level ?? "",
     review_approval_chance: caseRow.review_approval_chance != null ? String(caseRow.review_approval_chance) : "",
     review_agent_notes: caseRow.review_agent_notes ?? "",
@@ -50,6 +57,7 @@ export default function CaseReviewNote({
   documentItems,
   documentSubItems,
   appUrl,
+  autoFill,
   canEdit,
 }: {
   caseId: string;
@@ -58,12 +66,13 @@ export default function CaseReviewNote({
   documentItems: DocumentItem[];
   documentSubItems: DocumentSubItem[];
   appUrl: string;
+  autoFill: ReviewAutoFill;
   canEdit: boolean;
 }) {
   const defaultDocLink = `${appUrl}/api/cases/${caseId}/documents/zip`;
   const defaultClientType: ReviewClientType = client.employment_type === "self-employed" ? "business_owner" : "salary_earner";
 
-  const [form, setForm] = useState<FormState>(() => toFormState(caseRow, defaultDocLink, defaultClientType));
+  const [form, setForm] = useState<FormState>(() => toFormState(caseRow, defaultDocLink, defaultClientType, autoFill));
   const [copied, setCopied] = useState(false);
   const initialState: UpdateReviewState = {};
   const [state, formAction, pending] = useActionState(updateCaseReview.bind(null, caseId), initialState);
