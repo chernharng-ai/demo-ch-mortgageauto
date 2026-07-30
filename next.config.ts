@@ -6,6 +6,9 @@ const nextConfig: NextConfig = {
   // so we don't let them block a deployment.
   typescript: { ignoreBuildErrors: true },
   eslint: { ignoreDuringBuilds: true },
+  // MuPDF is a WASM package — bundling it breaks the .wasm asset path, so it
+  // must stay an external server dependency.
+  serverExternalPackages: ["mupdf"],
   // Bulk document upload sends multiple files' bytes through one Server
   // Action call; Next's default 1MB body limit is far below what several
   // 15MB (per-file cap) documents add up to in one drop.

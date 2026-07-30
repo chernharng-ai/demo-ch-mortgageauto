@@ -118,6 +118,7 @@ export interface CaseDocument {
   matched_doc_name: string | null;
   ai_extracted_data: import("./extraction").DocumentExtraction | null;
   ai_extraction_status: ExtractionStatus;
+  ai_extraction_error: string | null;
   created_at: string;
 }
 

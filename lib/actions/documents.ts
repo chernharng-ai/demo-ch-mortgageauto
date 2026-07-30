@@ -6,6 +6,7 @@ import { getCurrentUser } from "@/lib/supabase/profile";
 import { extractDocumentData, classifyByFilename, buildStorageFileName, type DocumentExtraction } from "@/lib/mortgage/extraction";
 import { buildChecklistTemplate, expectedPeriodLabels } from "@/lib/mortgage/checklistTemplate";
 import { epfStatementHasSplit } from "@/lib/mortgage/tally";
+import { prepareForExtraction, icPasswordCandidates, PdfLockedError } from "@/lib/mortgage/pdfRepair";
 import { rederiveAndCalculate } from "./income";
 
 /**
@@ -134,11 +135,12 @@ export async function bulkUploadDocuments(caseId: string, formData: FormData): P
   const supabase = await createClient();
 
   const [{ data: caseRow }, { data: items }] = await Promise.all([
-    supabase.from("cases").select("clients(full_name)").eq("id", caseId).single<{ clients: { full_name: string } }>(),
+    supabase.from("cases").select("clients(full_name, ic_number)").eq("id", caseId).single<{ clients: { full_name: string; ic_number: string | null } }>(),
     supabase.from("document_items").select("doc_name").eq("case_id", caseId),
   ]);
 
   const clientName = caseRow?.clients?.full_name ?? "client";
+  const pdfPasswords = icPasswordCandidates(caseRow?.clients?.ic_number ?? null);
   const candidateDocNames = [...new Set((items ?? []).map((i) => i.doc_name))];
 
   const results: BulkUploadResult[] = [];
@@ -156,11 +158,16 @@ export async function bulkUploadDocuments(caseId: string, formData: FormData): P
     const mimeType = file.type || guessMimeTypeFromFileName(file.name);
 
     let extraction: DocumentExtraction | null = null;
+    let extractionError: string | null = null;
     try {
-      extraction = await extractDocumentData(buffer, mimeType, candidateDocNames);
+      // Repair/unlock first: password-protected bank statements and broken
+      // portal exports (Experian) are rejected by the vision API as-is.
+      const readable = await prepareForExtraction(buffer, mimeType, pdfPasswords);
+      extraction = await extractDocumentData(readable, mimeType, candidateDocNames);
     } catch (err) {
       console.error(`Document extraction failed for "${file.name}" (${mimeType}):`, err);
       extraction = null;
+      extractionError = err instanceof PdfLockedError ? err.message : "AI could not read this file — retry, or check the file opens normally.";
     }
 
     const matchedDocName = extraction?.matched_doc_name ?? classifyByFilename(file.name, candidateDocNames);
@@ -189,6 +196,7 @@ export async function bulkUploadDocuments(caseId: string, formData: FormData): P
         matched_doc_name: matchedDocName,
         ai_extracted_data: extraction,
         ai_extraction_status: extraction ? "done" : "unavailable",
+        ai_extraction_error: extraction ? null : extractionError,
       })
       .select("id")
       .single();
@@ -225,14 +233,16 @@ export async function bulkUploadDocuments(caseId: string, formData: FormData): P
 export async function retryExtraction(caseDocumentId: string, caseId: string) {
   const supabase = await createClient();
 
-  const [{ data: caseDoc }, { data: items }] = await Promise.all([
+  const [{ data: caseDoc }, { data: items }, { data: caseRow }] = await Promise.all([
     supabase.from("case_documents").select("file_path, mime_type, original_file_name").eq("id", caseDocumentId).single(),
     supabase.from("document_items").select("doc_name").eq("case_id", caseId),
+    supabase.from("cases").select("clients(ic_number)").eq("id", caseId).single<{ clients: { ic_number: string | null } }>(),
   ]);
 
   if (!caseDoc) return;
 
   const candidateDocNames = [...new Set((items ?? []).map((i) => i.doc_name))];
+  const pdfPasswords = icPasswordCandidates(caseRow?.clients?.ic_number ?? null);
 
   const { data: blob, error: downloadError } = await supabase.storage.from("client-documents").download(caseDoc.file_path);
   if (downloadError || !blob) return;
@@ -241,11 +251,14 @@ export async function retryExtraction(caseDocumentId: string, caseId: string) {
   const mimeType = caseDoc.mime_type || guessMimeTypeFromFileName(caseDoc.original_file_name);
 
   let extraction: DocumentExtraction | null = null;
+  let extractionError: string | null = null;
   try {
-    extraction = await extractDocumentData(buffer, mimeType, candidateDocNames);
+    const readable = await prepareForExtraction(buffer, mimeType, pdfPasswords);
+    extraction = await extractDocumentData(readable, mimeType, candidateDocNames);
   } catch (err) {
     console.error(`Retry extraction failed for "${caseDoc.original_file_name}" (${mimeType}):`, err);
     extraction = null;
+    extractionError = err instanceof PdfLockedError ? err.message : "AI could not read this file — retry, or check the file opens normally.";
   }
 
   const matchedDocName = extraction?.matched_doc_name ?? classifyByFilename(caseDoc.original_file_name, candidateDocNames);
@@ -256,6 +269,7 @@ export async function retryExtraction(caseDocumentId: string, caseId: string) {
       matched_doc_name: matchedDocName,
       ai_extracted_data: extraction,
       ai_extraction_status: extraction ? "done" : "unavailable",
+      ai_extraction_error: extraction ? null : extractionError,
     })
     .eq("id", caseDocumentId);
 

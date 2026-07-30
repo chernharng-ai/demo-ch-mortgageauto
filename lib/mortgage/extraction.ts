@@ -273,18 +273,25 @@ export async function extractDocumentData(
   // silent null here previously masked a real extraction failure) — log
   // loudly and retry once before giving up.
   for (let attempt = 1; attempt <= 2; attempt++) {
-    const response = await client.messages.create({
+    // Streamed (then collected) because 32k max_tokens exceeds the SDK's
+    // non-streaming limit; behaviour is identical to a plain create().
+    const response = await client.messages.stream({
       // Sonnet, not Haiku: Haiku misread bank-statement table columns (missed
       // obvious salary credits, picked a withdrawal as a credit) — the officer's
       // zero-mistake standard is worth the extra fraction of a sen per document.
       model: "claude-sonnet-5",
       // Bank statements/credit reports can carry many rows on top of the
       // other fields — leave generous headroom so the JSON never truncates
-      // (a full CTOS extraction has been observed to exceed 4096).
-      max_tokens: 8192,
+      // (a full CTOS exceeded 4096; a 6-month bank statement's deposit list
+      // exceeded 8192).
+      max_tokens: 32768,
+      // Transcription, not reasoning: thinking is ON by default on sonnet-5
+      // and its tokens count against max_tokens — a dense bank statement had
+      // the model spend the whole budget thinking and truncate the JSON.
+      thinking: { type: "disabled" },
       output_config: { format: { type: "json_schema", schema: buildExtractionSchema(candidateDocNames) } },
       messages: [{ role: "user", content }],
-    });
+    }).finalMessage();
 
     const textBlock = response.content.find((b): b is Anthropic.TextBlock => b.type === "text");
     if (!textBlock) {

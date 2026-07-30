@@ -175,6 +175,7 @@ function DocRow({ caseId, group, canEdit }: { caseId: string; group: DocGroup; c
                   <span>{f.original_file_name}</span>
                 )}
                 <span className="text-neutral-400">uploaded {f.created_at.slice(0, 10)}</span>
+                {f.ai_extraction_error && <span className="text-red-600">⚠ {f.ai_extraction_error}</span>}
                 {f.ai_extraction_status !== "done" && <RetryButton caseId={caseId} caseDocumentId={f.id} />}
               </li>
             ))}
@@ -348,6 +349,7 @@ function UnmatchedRow({
           ))}
         </select>
       </div>
+      {doc.ai_extraction_error && <p className="mt-1 text-xs text-red-600">⚠ {doc.ai_extraction_error}</p>}
       {doc.ai_extracted_data && (doc.ai_extracted_data.detected_income.length > 0 || doc.ai_extracted_data.notes) && (
         <details className="mt-1">
           <summary className="cursor-pointer text-xs text-neutral-500 hover:text-neutral-700 select-none">
