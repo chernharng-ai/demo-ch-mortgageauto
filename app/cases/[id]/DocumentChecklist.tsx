@@ -17,6 +17,8 @@ interface DocGroup {
   subItems: DocumentSubItem[];
   /** Printed report date (CTOS/Experian) of the latest document filed here — tells the officer at a glance if a fresh report is needed. */
   reportDate: string | null;
+  /** Uploaded files matched to this checklist item — viewable via signed URL. */
+  files: SignedCaseDocument[];
 }
 
 function icon(status: DocStatus) {
@@ -47,8 +49,8 @@ export default function DocumentChecklist({
   const groups: DocGroup[] = candidateDocNames.map((docName) => {
     const groupItems = items.filter((i) => i.doc_name === docName);
     const groupSubItems = subItems.filter((s) => s.doc_name === docName).sort((a, b) => a.sort_order - b.sort_order);
-    const reportDate = caseDocuments
-      .filter((d) => d.matched_doc_name === docName)
+    const groupFiles = caseDocuments.filter((d) => d.matched_doc_name === docName);
+    const reportDate = groupFiles
       .map((d) => d.ai_extracted_data?.report_date)
       .filter((d): d is string => !!d)
       .sort()
@@ -60,6 +62,7 @@ export default function DocumentChecklist({
       isCustom: groupItems.every((i) => i.bank_id === null),
       subItems: groupSubItems,
       reportDate,
+      files: groupFiles,
     };
   });
 
@@ -154,6 +157,30 @@ function DocRow({ caseId, group, canEdit }: { caseId: string; group: DocGroup; c
       </div>
 
       <SubItems caseId={caseId} docName={group.docName} subItems={group.subItems} canEdit={canEdit} />
+
+      {group.files.length > 0 && (
+        <details className="mt-1.5">
+          <summary className="cursor-pointer text-xs text-neutral-400 hover:text-neutral-700 select-none">
+            {group.files.length} file{group.files.length === 1 ? "" : "s"} uploaded — view
+          </summary>
+          <ul className="mt-1 space-y-1 pl-1">
+            {group.files.map((f) => (
+              <li key={f.id} className="flex items-center gap-2 text-xs text-neutral-600">
+                <span aria-hidden>📄</span>
+                {f.signedUrl ? (
+                  <a href={f.signedUrl} target="_blank" rel="noreferrer" className="underline hover:text-neutral-900">
+                    {f.original_file_name}
+                  </a>
+                ) : (
+                  <span>{f.original_file_name}</span>
+                )}
+                <span className="text-neutral-400">uploaded {f.created_at.slice(0, 10)}</span>
+                {f.ai_extraction_status !== "done" && <RetryButton caseId={caseId} caseDocumentId={f.id} />}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
     </li>
   );
 }
