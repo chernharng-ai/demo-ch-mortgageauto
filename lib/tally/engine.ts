@@ -63,7 +63,9 @@ function labeledAmount(text: string, labels: string[], opts?: { min?: number; ma
  */
 function labeledText(text: string, labels: string[], valuePattern: string, confidence = 0.9): { value: string; confidence: number; ambiguous?: boolean } | null {
   for (const label of labels) {
-    const labelRe = new RegExp(String.raw`${label}[^\S\n]*[:=\-]?[^\S\n]*`, "gi");
+    // Lookbehinds keep the label from matching inside a longer compound label
+    // ("Name" inside "Company Name:", "email" inside "HR Company Email").
+    const labelRe = new RegExp(String.raw`(?<![A-Za-z])(?<![A-Za-z][ \t])${label}[^\S\n]*[:=\-]?[^\S\n]*`, "gi");
     let lm: RegExpExecArray | null;
     while ((lm = labelRe.exec(text)) !== null) {
       const valueRe = new RegExp(String.raw`^(${valuePattern})`);
@@ -88,6 +90,18 @@ const EXTRACTORS: Record<string, Extractor> = {
       // Fallback: leading name before an IC number ("Arjun Kumar a/k Santhosh, IC 850330-...")
       const m = text.match(new RegExp(String.raw`^\s*(${NAME_PATTERN})\s*,?\s*(?:\(?(?:IC|NRIC|MyKad)\b)`, "i"));
       if (m?.[1]) return { value: m[1].trim(), confidence: 0.6 };
+      // Fallback: an unlabeled ALL-CAPS line with a Malaysian name particle
+      // ("WAHIDAH BINTI RAJA SHUKRI AMRUN") — flagged uncertain for review.
+      const capsLine = text
+        .split("\n")
+        .map((l) => l.trim().replace(/[.,;]+$/, ""))
+        .find(
+          (l) =>
+            /^[A-Z][A-Z@'\-]*(?: [A-Z@'\-/][A-Z@'\-/]*){1,6}$/.test(l) &&
+            /\b(?:BIN|BINTI|BTE|BT|A\/[LPK]|S\/O|D\/O)\b/.test(l) &&
+            !/\b(?:JALAN|LORONG|TAMAN|BANDAR|PERSIARAN|LEBUH|SDN|BHD)\b/.test(l),
+        );
+      if (capsLine) return { value: capsLine, confidence: 0.6 };
       return null;
     },
   },
@@ -230,6 +244,12 @@ const EXTRACTORS: Record<string, Extractor> = {
       return labeledAmount(text, ["EPF(?:\\s+balance)?", "KWSP(?:\\s+balance)?"], { min: 100 });
     },
   },
+  kids_count: {
+    extract(text) {
+      const m = text.match(/(\d{1,2})\s*(?:kids?|children|anak)\b/i);
+      return m ? { value: m[1], confidence: 0.6 } : null;
+    },
+  },
 };
 
 // ── Standard-template fields (labeled-line + zone-aware extraction) ─────────
@@ -318,7 +338,7 @@ const STANDARD_FIELDS: Record<string, StandardFieldDef> = {
   spouse_contact: { zone: "spouse", aliases: ["spouse contact no", "spouse contact", "contact no", "contact", "phone"] },
   spouse_email: { zone: "spouse", aliases: ["spouse email", "email"] },
   spouse_occupation: { zone: "spouse", aliases: ["spouse occupation", "occupation"] },
-  no_of_children: { zone: "spouse", aliases: ["no. of children", "no of children", "number of children", "children"] },
+  no_of_children: { zone: "spouse", aliases: ["no. of children", "no of children", "number of children", "children"], fallback: "kids_count" },
   emergency_name: { zone: "emergency", aliases: ["emergency contact name", "emergency name", "name"] },
   emergency_phone: { zone: "emergency", aliases: ["emergency phone", "phone no", "phone", "contact no", "contact"] },
   emergency_address: { zone: "emergency", aliases: ["emergency address", "address"] },
@@ -374,7 +394,9 @@ function extractStandardField(fullText: string, zones: Record<string, string>, d
 
 /** Run the rule engine over raw text for every template field. Always returns one match per field. */
 export function runTallyEngine(rawText: string, fields: TemplateFieldInput[]): TallyMatch[] {
-  const text = rawText.trim().replace(/[’‘]/g, "'").replace(/[“”]/g, '"');
+  // CRLF must become LF before any line matching: JS "." never matches "\r",
+  // so a trailing \r makes `(.+)$` silently fail on every Windows/browser line.
+  const text = rawText.trim().replace(/\r\n?/g, "\n").replace(/[’‘]/g, "'").replace(/[“”]/g, '"');
   const zones = splitZones(text);
   return fields.map((field) => {
     const std = STANDARD_FIELDS[field.field_key];
