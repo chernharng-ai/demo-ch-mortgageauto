@@ -319,6 +319,76 @@ export async function reTallySubmission(submissionId: string): Promise<TallyActi
   return {};
 }
 
+/**
+ * docs/AGENTIC_LAYER.md `suggest_missing_value` — medium risk. Runs AI
+ * extraction over fields the rule engine left missing/uncertain. Results land
+ * as review_status "uncertain" (amber) so the officer one-click-confirms each
+ * (docs/TASKS.md Sprint 3). Manual and confirmed entries are never touched.
+ */
+export async function aiExtractSubmission(submissionId: string): Promise<TallyActionState & { suggested?: number }> {
+  const supabase = await createClient();
+
+  const { data: submission, error: subError } = await supabase
+    .from("submissions")
+    .select("raw_input, template_id")
+    .eq("id", submissionId)
+    .single();
+  if (subError || !submission) return { error: "Submission not found." };
+
+  const { data: entries, error: entriesError } = await supabase
+    .from("tally_entries")
+    .select("id, template_field_id, source, review_status, extracted_value, template_fields(id, field_key, field_label, field_type, is_required)")
+    .eq("submission_id", submissionId);
+  if (entriesError || !entries) return { error: "Could not load entries." };
+
+  const candidates = entries.filter(
+    (e) => e.source !== "manual" && e.review_status !== "confirmed" &&
+      (e.review_status === "missing" || e.review_status === "uncertain" || !e.extracted_value),
+  );
+  if (candidates.length === 0) return { error: "Nothing left for AI — every field is filled or confirmed." };
+
+  const fields = candidates
+    .map((e) => e.template_fields as unknown as TemplateField | null)
+    .filter((f): f is TemplateField => f !== null);
+
+  const { aiExtractFields } = await import("@/lib/tally/aiExtract");
+  let results;
+  try {
+    results = await aiExtractFields(submission.raw_input, fields);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "AI extraction failed." };
+  }
+
+  let suggested = 0;
+  for (const result of results) {
+    if (!result.value) continue;
+    const entry = candidates.find(
+      (e) => (e.template_fields as unknown as TemplateField | null)?.field_key === result.field_key,
+    );
+    if (!entry) continue;
+    const { error } = await supabase
+      .from("tally_entries")
+      .update({
+        extracted_value: result.value,
+        source: "ai-extract",
+        confidence: Math.round(result.confidence * 100) / 100,
+        review_status: "uncertain", // officer must confirm — AI never self-approves
+      })
+      .eq("id", entry.id);
+    if (!error) suggested++;
+  }
+
+  await logAudit(supabase, "ai_extract_run", "submission", submissionId, {
+    fields_attempted: fields.map((f) => f.field_key),
+    fields_suggested: suggested,
+  });
+
+  await recalcScore(supabase, submissionId);
+  revalidatePath(`/tally/${submissionId}`);
+  revalidatePath("/tally");
+  return { suggested };
+}
+
 /** Shared loader for the results + export screens. */
 export async function loadSubmissionWithEntries(submissionId: string) {
   const supabase = await createClient();
