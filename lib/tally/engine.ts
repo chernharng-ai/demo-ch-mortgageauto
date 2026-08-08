@@ -76,7 +76,9 @@ function labeledText(text: string, labels: string[], valuePattern: string, confi
 
 // No "." in the name char class — it would swallow sentence boundaries
 // ("Ng Hui Ling. NRIC …" must stop at "Ling").
-const NAME_PATTERN = String.raw`[A-Z][A-Za-z@'\-]*(?:[ \t](?:a\/[lpk]|s\/o|d\/o|bin|binti|bt|[A-Z][A-Za-z@'\-]*)){0,6}`;
+// "binti" before "bin": alternation is first-match, so "bin|binti" truncates
+// "Amirah binti Hassan" to "Amirah bin".
+const NAME_PATTERN = String.raw`[A-Z][A-Za-z@'\-]*(?:[ \t](?:a\/[lpk]|s\/o|d\/o|binti|bin|bte|bt|[A-Z][A-Za-z@'\-]*)){0,6}`;
 
 const EXTRACTORS: Record<string, Extractor> = {
   applicant_name: {
@@ -143,7 +145,10 @@ const EXTRACTORS: Record<string, Extractor> = {
   property_address: {
     extract(text) {
       const streetPattern = String.raw`(?:No\.?\s*\d+[A-Za-z]?,?\s*)?(?:Jalan|Jln|Lorong|Lrg|Persiaran|Lebuh(?:raya)?|Taman|Bandar|Presint|Precinct)\b[^,.\n;]*(?:,\s*(?:Taman|Bandar|Kg\.?|Kampung|Desa|Bukit|Seksyen|Section)\b[^,.\n;]*)*`;
-      const labeled = labeledText(text, ["property(?:\\s+address)?(?:\\s+at)?", "address", "alamat", "house at", "condo at", "unit at", "buying(?:\\s+\\w+){0,2}\\s+at"], String.raw`(?:No\.?\s*)?\d+[A-Za-z]?[^,.\n;]*(?:,\s*[^,.\n;]+)?`);
+      // Comma continuation requires an uppercase start so location suffixes
+      // ("Taman Setia Alam") extend the address but trailing prose
+      // (", asking RM450k") does not.
+      const labeled = labeledText(text, ["property(?:\\s+address)?(?:\\s+at)?", "address", "alamat", "house at", "condo at", "unit at", "buying(?:\\s+\\w+){0,2}\\s+at"], String.raw`(?:No\.?\s*)?\d+[A-Za-z]?[^,.\n;]*(?:,\s*[A-Z][^,.\n;]*)?`);
       const street = text.match(new RegExp(streetPattern, "i"));
       if (labeled && /\d/.test(labeled.value)) {
         // Extend a labeled hit with the street match when the street contains it
