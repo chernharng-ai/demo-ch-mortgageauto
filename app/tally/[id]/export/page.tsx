@@ -1,12 +1,15 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { loadSubmissionWithEntries } from "@/lib/actions/tally";
+import { supabaseConfigured } from "@/lib/supabase/configured";
 import PrintButton from "./PrintButton";
+import SetupNotice from "../../SetupNotice";
 
 export const dynamic = "force-dynamic";
 
 export default async function ExportPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  if (!supabaseConfigured()) return <SetupNotice />;
   const { submission, entries } = await loadSubmissionWithEntries(id);
   if (!submission) notFound();
 

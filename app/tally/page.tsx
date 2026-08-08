@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { supabaseConfigured } from "@/lib/supabase/configured";
 import { missingRequiredCount } from "@/lib/tally/score";
 import type { Submission } from "@/lib/tally/types";
+import SetupNotice from "./SetupNotice";
 
 export const dynamic = "force-dynamic";
 
@@ -23,6 +25,7 @@ export default async function TallyDashboard({
   searchParams: Promise<{ status?: string; sort?: string }>;
 }) {
   const { status = "all", sort = "priority" } = await searchParams;
+  if (!supabaseConfigured()) return <SetupNotice />;
   const supabase = await createClient();
 
   let query = supabase

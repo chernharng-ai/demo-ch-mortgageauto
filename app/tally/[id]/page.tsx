@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { loadSubmissionWithEntries } from "@/lib/actions/tally";
+import { supabaseConfigured } from "@/lib/supabase/configured";
 import { missingRequiredCount } from "@/lib/tally/score";
 import EntryRow from "./EntryRow";
 import StatusControl from "./StatusControl";
 import SubmissionToolbar from "./SubmissionToolbar";
+import SetupNotice from "../SetupNotice";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +15,7 @@ const SCORE_COLOR = (score: number) =>
 
 export default async function SubmissionPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  if (!supabaseConfigured()) return <SetupNotice />;
   const { submission, entries } = await loadSubmissionWithEntries(id);
   if (!submission) notFound();
 

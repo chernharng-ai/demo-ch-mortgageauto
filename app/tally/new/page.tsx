@@ -1,11 +1,14 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { supabaseConfigured } from "@/lib/supabase/configured";
 import type { TemplateField } from "@/lib/tally/types";
 import NewTallyForm from "./NewTallyForm";
+import SetupNotice from "../SetupNotice";
 
 export const dynamic = "force-dynamic";
 
 export default async function NewTallyPage() {
+  if (!supabaseConfigured()) return <SetupNotice />;
   const supabase = await createClient();
   const { data: template } = await supabase
     .from("templates")
