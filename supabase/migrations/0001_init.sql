@@ -56,6 +56,14 @@ create table if not exists audit_logs (
   details jsonb
 );
 
+-- The case-review baseline (0000) also creates audit_logs, with a different
+-- shape (case_id / before_value / after_value). When that table already
+-- exists the create above is a no-op, so add the tally columns explicitly —
+-- both modules then share one superset audit_logs table.
+alter table audit_logs add column if not exists entity_type text;
+alter table audit_logs add column if not exists entity_id uuid;
+alter table audit_logs add column if not exists details jsonb;
+
 alter table templates enable row level security;
 alter table template_fields enable row level security;
 alter table submissions enable row level security;
