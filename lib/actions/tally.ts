@@ -309,6 +309,20 @@ export async function reTallySubmission(submissionId: string): Promise<TallyActi
     updated++;
   }
 
+  // Refresh the derived client name unless the officer set it manually
+  const nameEntry = existing?.find((e) => {
+    const f = fields.find((x) => x.id === e.template_field_id);
+    return (f?.field_key === "name" || f?.field_key === "applicant_name") && e.source === "manual";
+  });
+  if (!nameEntry) {
+    const freshName = matches.find(
+      (m) => (m.field_key === "name" || m.field_key === "applicant_name") && m.extracted_value,
+    )?.extracted_value;
+    if (freshName) {
+      await supabase.from("submissions").update({ client_name: freshName }).eq("id", submissionId);
+    }
+  }
+
   const score = await recalcScore(supabase, submissionId);
   await logAudit(supabase, "tally_run", "submission", submissionId, {
     re_tally: true,
