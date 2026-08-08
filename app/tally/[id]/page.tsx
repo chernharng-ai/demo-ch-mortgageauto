@@ -1,0 +1,90 @@
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { loadSubmissionWithEntries } from "@/lib/actions/tally";
+import { missingRequiredCount } from "@/lib/tally/score";
+import EntryRow from "./EntryRow";
+import StatusControl from "./StatusControl";
+import SubmissionToolbar from "./SubmissionToolbar";
+
+export const dynamic = "force-dynamic";
+
+const SCORE_COLOR = (score: number) =>
+  score >= 90 ? "text-emerald-600" : score >= 60 ? "text-amber-600" : "text-red-600";
+
+export default async function SubmissionPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const { submission, entries } = await loadSubmissionWithEntries(id);
+  if (!submission) notFound();
+
+  const missingRequired = missingRequiredCount(
+    entries.map((e) => ({
+      extracted_value: e.extracted_value,
+      review_status: e.review_status,
+      is_required: e.template_fields?.is_required ?? true,
+    })),
+  );
+
+  return (
+    <main className="mx-auto max-w-4xl px-4 py-8">
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <Link href="/tally" className="text-sm text-neutral-500 hover:text-neutral-900">
+            ← Tally Dashboard
+          </Link>
+          <h1 className="mt-2 text-xl font-bold text-neutral-900">
+            {submission.client_name ?? "Unnamed client"}
+          </h1>
+          <p className="mt-1 text-sm text-neutral-600">
+            {submission.agent_name ? `Agent: ${submission.agent_name}` : "No agent recorded"}
+            {submission.agent_agency ? ` (${submission.agent_agency})` : ""}
+            {" · "}
+            {submission.source_format ?? "unknown source"}
+            {" · "}
+            {new Date(submission.created_at).toLocaleDateString("en-MY", { dateStyle: "medium" })}
+          </p>
+        </div>
+        <div className="text-right">
+          <div className={`text-3xl font-bold tabular-nums ${SCORE_COLOR(Number(submission.completeness_score))}`}>
+            {Math.round(Number(submission.completeness_score))}%
+          </div>
+          <p className="text-xs text-neutral-500">
+            completeness · {missingRequired} required missing
+          </p>
+        </div>
+      </div>
+
+      <div className="mb-6 flex flex-wrap items-center gap-3">
+        <StatusControl submissionId={submission.id} status={submission.status} />
+        <SubmissionToolbar submissionId={submission.id} />
+      </div>
+
+      <div className="overflow-x-auto rounded-lg border border-neutral-200">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-neutral-200 bg-neutral-50 text-left text-xs uppercase tracking-wide text-neutral-500">
+              <th className="px-4 py-2.5 font-medium">Field</th>
+              <th className="px-4 py-2.5 font-medium">Extracted value</th>
+              <th className="px-4 py-2.5 font-medium">Source</th>
+              <th className="px-4 py-2.5 font-medium">Confidence</th>
+              <th className="px-4 py-2.5 font-medium">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {entries.map((entry) => (
+              <EntryRow key={entry.id} entry={entry} submissionId={submission.id} />
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <details className="mt-6 rounded-lg border border-neutral-200">
+        <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-neutral-700 hover:bg-neutral-50">
+          Raw input ({submission.source_format ?? "unknown"})
+        </summary>
+        <pre className="whitespace-pre-wrap border-t border-neutral-200 bg-neutral-50 p-4 font-mono text-xs text-neutral-700">
+          {submission.raw_input}
+        </pre>
+      </details>
+    </main>
+  );
+}
