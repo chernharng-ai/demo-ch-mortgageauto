@@ -1,246 +1,150 @@
-create table if not exists banks (
+create table if not exists templates (
   id uuid primary key default gen_random_uuid(),
   user_id uuid,
+  created_at timestamptz not null default now(),
   name text not null,
-  calc_params jsonb not null default '{}',
-  doc_requirements jsonb not null default '[]',
-  created_at timestamptz not null default now()
+  description text,
+  is_active boolean default true
 );
 
-alter table banks enable row level security;
-drop policy if exists "banks_v1_read" on banks;
-create policy "banks_v1_read" on banks for select using (true);
-drop policy if exists "banks_v1_write" on banks;
-create policy "banks_v1_write" on banks for all using (true) with check (true);
-
-create table if not exists clients (
+create table if not exists template_fields (
   id uuid primary key default gen_random_uuid(),
   user_id uuid,
-  full_name text not null,
-  ic_number text,
-  employment_type text not null default 'employed',
-  employer_name text,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  template_id uuid not null references templates(id) on delete cascade,
+  field_key text not null,
+  field_label text not null,
+  field_type text not null default 'text',
+  is_required boolean default true,
+  sort_order int default 0
 );
 
-alter table clients enable row level security;
-drop policy if exists "clients_v1_read" on clients;
-create policy "clients_v1_read" on clients for select using (true);
-drop policy if exists "clients_v1_write" on clients;
-create policy "clients_v1_write" on clients for all using (true) with check (true);
-
-create table if not exists cases (
+create table if not exists submissions (
   id uuid primary key default gen_random_uuid(),
   user_id uuid,
-  client_id uuid references clients(id),
-  status text not null default 'draft',
-  property_value numeric,
-  loan_tenure_years int not null default 30,
-  notes text,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  template_id uuid not null references templates(id),
+  client_name text,
+  agent_name text,
+  agent_agency text,
+  raw_input text not null,
+  source_format text,
+  status text default 'pending',
+  completeness_score numeric default 0
 );
 
-alter table cases enable row level security;
-drop policy if exists "cases_v1_read" on cases;
-create policy "cases_v1_read" on cases for select using (true);
-drop policy if exists "cases_v1_write" on cases;
-create policy "cases_v1_write" on cases for all using (true) with check (true);
-
-create table if not exists income_entries (
+create table if not exists tally_entries (
   id uuid primary key default gen_random_uuid(),
   user_id uuid,
-  case_id uuid references cases(id),
-  income_type text not null,
-  gross_amount numeric not null,
-  frequency text not null default 'monthly',
-  supporting_doc text,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  submission_id uuid not null references submissions(id) on delete cascade,
+  template_field_id uuid not null references template_fields(id) on delete cascade,
+  extracted_value text,
+  source text,
+  confidence numeric,
+  review_status text default 'unreviewed',
+  unique(submission_id, template_field_id)
 );
-
-alter table income_entries enable row level security;
-drop policy if exists "income_entries_v1_read" on income_entries;
-create policy "income_entries_v1_read" on income_entries for select using (true);
-drop policy if exists "income_entries_v1_write" on income_entries;
-create policy "income_entries_v1_write" on income_entries for all using (true) with check (true);
-
-create table if not exists income_calculations (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid,
-  case_id uuid references cases(id),
-  bank_id uuid references banks(id),
-  eligible_income numeric not null,
-  method_snapshot jsonb not null default '{}',
-  calculated_by text,
-  created_at timestamptz not null default now()
-);
-
-alter table income_calculations enable row level security;
-drop policy if exists "income_calculations_v1_read" on income_calculations;
-create policy "income_calculations_v1_read" on income_calculations for select using (true);
-drop policy if exists "income_calculations_v1_write" on income_calculations;
-create policy "income_calculations_v1_write" on income_calculations for all using (true) with check (true);
-
-create table if not exists loan_eligibilities (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid,
-  case_id uuid references cases(id),
-  bank_id uuid references banks(id),
-  max_loan_amount numeric not null,
-  monthly_instalment numeric not null,
-  dsr_ratio numeric not null,
-  eligibility_status text not null default 'eligible',
-  created_at timestamptz not null default now()
-);
-
-alter table loan_eligibilities enable row level security;
-drop policy if exists "loan_eligibilities_v1_read" on loan_eligibilities;
-create policy "loan_eligibilities_v1_read" on loan_eligibilities for select using (true);
-drop policy if exists "loan_eligibilities_v1_write" on loan_eligibilities;
-create policy "loan_eligibilities_v1_write" on loan_eligibilities for all using (true) with check (true);
-
-create table if not exists document_items (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid,
-  case_id uuid references cases(id),
-  bank_id uuid references banks(id),
-  doc_name text not null,
-  status text not null default 'pending',
-  received_at timestamptz,
-  notes text,
-  created_at timestamptz not null default now()
-);
-
-alter table document_items enable row level security;
-drop policy if exists "document_items_v1_read" on document_items;
-create policy "document_items_v1_read" on document_items for select using (true);
-drop policy if exists "document_items_v1_write" on document_items;
-create policy "document_items_v1_write" on document_items for all using (true) with check (true);
 
 create table if not exists audit_logs (
   id uuid primary key default gen_random_uuid(),
   user_id uuid,
-  case_id uuid,
+  created_at timestamptz not null default now(),
   action text not null,
-  performed_by text,
-  before_value jsonb,
-  after_value jsonb,
-  created_at timestamptz not null default now()
+  entity_type text,
+  entity_id uuid,
+  details jsonb
 );
 
+alter table templates enable row level security;
+alter table template_fields enable row level security;
+alter table submissions enable row level security;
+alter table tally_entries enable row level security;
 alter table audit_logs enable row level security;
+
+drop policy if exists "templates_v1_read" on templates;
+create policy "templates_v1_read" on templates for select using (true);
+drop policy if exists "templates_v1_write" on templates;
+create policy "templates_v1_write" on templates for all using (true) with check (true);
+
+drop policy if exists "template_fields_v1_read" on template_fields;
+create policy "template_fields_v1_read" on template_fields for select using (true);
+drop policy if exists "template_fields_v1_write" on template_fields;
+create policy "template_fields_v1_write" on template_fields for all using (true) with check (true);
+
+drop policy if exists "submissions_v1_read" on submissions;
+create policy "submissions_v1_read" on submissions for select using (true);
+drop policy if exists "submissions_v1_write" on submissions;
+create policy "submissions_v1_write" on submissions for all using (true) with check (true);
+
+drop policy if exists "tally_entries_v1_read" on tally_entries;
+create policy "tally_entries_v1_read" on tally_entries for select using (true);
+drop policy if exists "tally_entries_v1_write" on tally_entries;
+create policy "tally_entries_v1_write" on tally_entries for all using (true) with check (true);
+
 drop policy if exists "audit_logs_v1_read" on audit_logs;
 create policy "audit_logs_v1_read" on audit_logs for select using (true);
 drop policy if exists "audit_logs_v1_write" on audit_logs;
 create policy "audit_logs_v1_write" on audit_logs for all using (true) with check (true);
 
-insert into banks (id, name, calc_params, doc_requirements) values
-(
-  '11111111-1111-1111-1111-111111111111',
-  'Maybank',
-  '{"dsr_limit": 0.70, "stress_rate": 0.065, "tenure_max_years": 35, "income_rules": {"employed": {"basic": 1.0, "allowance": 0.5, "commission": 0.5, "rental": 0.8}, "self_employed": {"net_profit": 0.7}, "commission": {"basic": 1.0, "commission": 0.5}}}',
-  '["3 months payslip", "6 months bank statement", "EA Form / Income Tax", "IC (front & back)", "Offer Letter", "EPF Statement"]'
-),
-(
-  '22222222-2222-2222-2222-222222222222',
-  'CIMB Bank',
-  '{"dsr_limit": 0.65, "stress_rate": 0.060, "tenure_max_years": 35, "income_rules": {"employed": {"basic": 1.0, "allowance": 0.5, "commission": 0.5, "rental": 0.7}, "self_employed": {"net_profit": 0.7}, "commission": {"basic": 1.0, "commission": 0.5}}}',
-  '["3 months payslip", "6 months bank statement", "Income Tax BE Form", "IC (front & back)", "EPF Statement"]'
-),
-(
-  '33333333-3333-3333-3333-333333333333',
-  'RHB Bank',
-  '{"dsr_limit": 0.70, "stress_rate": 0.063, "tenure_max_years": 35, "income_rules": {"employed": {"basic": 1.0, "allowance": 0.6, "commission": 0.5, "rental": 0.8}, "self_employed": {"net_profit": 0.75}, "commission": {"basic": 1.0, "commission": 0.5}}}',
-  '["3 months payslip", "6 months bank statement", "Income Tax BE Form", "IC (front & back)", "Offer Letter"]'
-)
+insert into templates (id, name, description, is_active) values
+  ('a1000000-0000-0000-0000-000000000001', 'Standard Mortgage Loan Application v1', 'Canonical field set for residential mortgage loan application', true)
 on conflict (id) do nothing;
 
-insert into clients (id, full_name, ic_number, employment_type, employer_name) values
-(
-  'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
-  'Ahmad bin Ali',
-  '850101-14-5678',
-  'employed',
-  'Petronas'
-),
-(
-  'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
-  'Siti Rahayu binti Hassan',
-  '900215-10-1234',
-  'employed',
-  'Maybank Berhad'
-)
+insert into template_fields (id, template_id, field_key, field_label, field_type, is_required, sort_order) values
+  ('b1000000-0000-0000-0000-000000000001', 'a1000000-0000-0000-0000-000000000001', 'applicant_name', 'Applicant Full Name', 'text', true, 1),
+  ('b1000000-0000-0000-0000-000000000002', 'a1000000-0000-0000-0000-000000000001', 'nric', 'NRIC / MyKad No.', 'text', true, 2),
+  ('b1000000-0000-0000-0000-000000000003', 'a1000000-0000-0000-0000-000000000001', 'date_of_birth', 'Date of Birth', 'date', true, 3),
+  ('b1000000-0000-0000-0000-000000000004', 'a1000000-0000-0000-0000-000000000001', 'marital_status', 'Marital Status', 'text', true, 4),
+  ('b1000000-0000-0000-0000-000000000005', 'a1000000-0000-0000-0000-000000000001', 'monthly_income', 'Monthly Gross Income (RM)', 'number', true, 5),
+  ('b1000000-0000-0000-0000-000000000006', 'a1000000-0000-0000-0000-000000000001', 'employer_name', 'Employer Name', 'text', true, 6),
+  ('b1000000-0000-0000-0000-000000000007', 'a1000000-0000-0000-0000-000000000001', 'employment_duration', 'Employment Duration (months)', 'number', false, 7),
+  ('b1000000-0000-0000-0000-000000000008', 'a1000000-0000-0000-0000-000000000001', 'property_address', 'Property Address', 'text', true, 8),
+  ('b1000000-0000-0000-0000-000000000009', 'a1000000-0000-0000-0000-000000000001', 'property_type', 'Property Type', 'text', true, 9),
+  ('b1000000-0000-0000-0000-000000000010', 'a1000000-0000-0000-0000-000000000001', 'purchase_price', 'Purchase Price (RM)', 'number', true, 10),
+  ('b1000000-0000-0000-0000-000000000011', 'a1000000-0000-0000-0000-000000000001', 'loan_amount', 'Loan Amount (RM)', 'number', true, 11),
+  ('b1000000-0000-0000-0000-000000000012', 'a1000000-0000-0000-0000-000000000001', 'loan_tenure', 'Loan Tenure (years)', 'number', true, 12),
+  ('b1000000-0000-0000-0000-000000000013', 'a1000000-0000-0000-0000-000000000001', 'contact_number', 'Contact Number', 'text', true, 13),
+  ('b1000000-0000-0000-0000-000000000014', 'a1000000-0000-0000-0000-000000000001', 'email', 'Email Address', 'text', true, 14),
+  ('b1000000-0000-0000-0000-000000000015', 'a1000000-0000-0000-0000-000000000001', 'epf_balance', 'EPF Account Balance (RM)', 'number', false, 15)
 on conflict (id) do nothing;
 
-insert into cases (id, client_id, status, property_value, loan_tenure_years, notes) values
-(
-  'cccccccc-cccc-cccc-cccc-cccccccccccc',
-  'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
-  'in-review',
-  550000,
-  30,
-  'First property purchase. Client has stable income with 5 years tenure at current employer.'
-),
-(
-  'dddddddd-dddd-dddd-dddd-dddddddddddd',
-  'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
-  'draft',
-  420000,
-  35,
-  'Second property. Existing home loan commitment RM 1,200/month.'
-)
+insert into submissions (id, template_id, client_name, agent_name, agent_agency, raw_input, source_format, status, completeness_score) values
+  ('c1000000-0000-0000-0000-000000000001', 'a1000000-0000-0000-0000-000000000001', 'Lim Wei Jian', 'Sara Tan', 'IQI Realty', 'Client: Lim Wei Jian, IC: 880214-14-5566, DOB: 14/02/1988, Married, Income RM8500, Employer: Shell Malaysia, Property: No 12 Jalan Indah 4, Taman Indah, Condominium, Price RM680000, Loan RM544000, Tenure 30 years, HP: 012-3456789, Email: limwj@gmail.com', 'whatsapp', 'reviewed', 80),
+  ('c1000000-0000-0000-0000-000000000002', 'a1000000-0000-0000-0000-000000000001', 'Ng Hui Ling', 'Jason Lee', 'ERA Realty', 'Name: Ng Hui Ling. NRIC 910705-08-1234. Phone 011-2233445. Buying condo at 5A Persiaran Ampang, asking RM520k. Loan 90% 25yr. Single. Buyer monthly salary RM6200.', 'email', 'pending', 53),
+  ('c1000000-0000-0000-0000-000000000003', 'a1000000-0000-0000-0000-000000000001', 'Arjun Kumar', 'Meera Raj', 'PropNex', 'Arjun Kumar a/k Santhosh, IC 850330-71-0099, born 30 March 1985, married, income RM12500/month, works at Petronas 4 years, house at 88 Lorong Delima, terrace, purchase RM950000, financing RM760000 30yr, mobile 019-8877665, email arjun.k@outlook.com, EPF RM210000', 'pdf-copy', 'finalized', 100)
 on conflict (id) do nothing;
 
-insert into income_entries (case_id, income_type, gross_amount, frequency, supporting_doc) values
-('cccccccc-cccc-cccc-cccc-cccccccccccc', 'basic', 7500, 'monthly', '3 months payslip'),
-('cccccccc-cccc-cccc-cccc-cccccccccccc', 'allowance', 1500, 'monthly', 'Offer letter allowance clause'),
-('dddddddd-dddd-dddd-dddd-dddddddddddd', 'basic', 5800, 'monthly', '3 months payslip'),
-('dddddddd-dddd-dddd-dddd-dddddddddddd', 'allowance', 800, 'monthly', 'Offer letter'),
-('dddddddd-dddd-dddd-dddd-dddddddddddd', 'rental', 1200, 'monthly', 'Tenancy agreement')
-on conflict do nothing;
+insert into tally_entries (id, submission_id, template_field_id, extracted_value, source, confidence, review_status) values
+  ('d1000000-0000-0000-0000-000000000001', 'c1000000-0000-0000-0000-000000000001', 'b1000000-0000-0000-0000-000000000001', 'Lim Wei Jian', 'rule-match', 0.95, 'confirmed'),
+  ('d1000000-0000-0000-0000-000000000002', 'c1000000-0000-0000-0000-000000000001', 'b1000000-0000-0000-0000-000000000002', '880214-14-5566', 'rule-match', 0.95, 'confirmed'),
+  ('d1000000-0000-0000-0000-000000000003', 'c1000000-0000-0000-0000-000000000001', 'b1000000-0000-0000-0000-000000000003', '14/02/1988', 'rule-match', 0.90, 'confirmed'),
+  ('d1000000-0000-0000-0000-000000000004', 'c1000000-0000-0000-0000-000000000001', 'b1000000-0000-0000-0000-000000000004', 'Married', 'rule-match', 0.85, 'confirmed'),
+  ('d1000000-0000-0000-0000-000000000005', 'c1000000-0000-0000-0000-000000000001', 'b1000000-0000-0000-0000-000000000005', '8500', 'rule-match', 0.85, 'confirmed'),
+  ('d1000000-0000-0000-0000-000000000006', 'c1000000-0000-0000-0000-000000000001', 'b1000000-0000-0000-0000-000000000006', 'Shell Malaysia', 'rule-match', 0.80, 'confirmed'),
+  ('d1000000-0000-0000-0000-000000000008', 'c1000000-0000-0000-0000-000000000001', 'b1000000-0000-0000-0000-000000000008', 'No 12 Jalan Indah 4, Taman Indah', 'rule-match', 0.70, 'confirmed'),
+  ('d1000000-0000-0000-0000-000000000009', 'c1000000-0000-0000-0000-000000000001', 'b1000000-0000-0000-0000-000000000009', 'Condominium', 'rule-match', 0.75, 'confirmed'),
+  ('d1000000-0000-0000-0000-000000000010', 'c1000000-0000-0000-0000-000000000001', 'b1000000-0000-0000-0000-000000000010', '680000', 'rule-match', 0.85, 'confirmed'),
+  ('d1000000-0000-0000-0000-000000000011', 'c1000000-0000-0000-0000-000000000001', 'b1000000-0000-0000-0000-000000000011', '544000', 'rule-match', 0.85, 'confirmed'),
+  ('d1000000-0000-0000-0000-000000000012', 'c1000000-0000-0000-0000-000000000001', 'b1000000-0000-0000-0000-000000000012', '30', 'rule-match', 0.85, 'confirmed'),
+  ('d1000000-0000-0000-0000-000000000013', 'c1000000-0000-0000-0000-000000000001', 'b1000000-0000-0000-0000-000000000013', '012-3456789', 'rule-match', 0.90, 'confirmed'),
+  ('d1000000-0000-0000-0000-000000000014', 'c1000000-0000-0000-0000-000000000001', 'b1000000-0000-0000-0000-000000000014', 'limwj@gmail.com', 'rule-match', 0.90, 'confirmed'),
+  ('d1000000-0000-0000-0000-000000000015', 'c1000000-0000-0000-0000-000000000001', 'b1000000-0000-0000-0000-000000000015', null, 'missing', 0, 'missing'),
+  ('d1000000-0000-0000-0000-000000000016', 'c1000000-0000-0000-0000-000000000002', 'b1000000-0000-0000-0000-000000000001', 'Ng Hui Ling', 'rule-match', 0.95, 'confirmed'),
+  ('d1000000-0000-0000-0000-000000000017', 'c1000000-0000-0000-0000-000000000002', 'b1000000-0000-0000-0000-000000000002', '910705-08-1234', 'rule-match', 0.90, 'confirmed'),
+  ('d1000000-0000-0000-0000-000000000018', 'c1000000-0000-0000-0000-000000000002', 'b1000000-0000-0000-0000-000000000005', '6200', 'rule-match', 0.80, 'confirmed'),
+  ('d1000000-0000-0000-0000-000000000019', 'c1000000-0000-0000-0000-000000000002', 'b1000000-0000-0000-0000-000000000008', '5A Persiaran Ampang', 'rule-match', 0.60, 'uncertain'),
+  ('d1000000-0000-0000-0000-000000000020', 'c1000000-0000-0000-0000-000000000002', 'b1000000-0000-0000-0000-000000000009', 'condo', 'rule-match', 0.60, 'uncertain'),
+  ('d1000000-0000-0000-0000-000000000021', 'c1000000-0000-0000-0000-000000000002', 'b1000000-0000-0000-0000-000000000010', '520000', 'rule-match', 0.80, 'confirmed'),
+  ('d1000000-0000-0000-0000-000000000022', 'c1000000-0000-0000-0000-000000000002', 'b1000000-0000-0000-0000-000000000011', '468000', 'rule-match', 0.70, 'uncertain'),
+  ('d1000000-0000-0000-0000-000000000023', 'c1000000-0000-0000-0000-000000000002', 'b1000000-0000-0000-0000-000000000012', '25', 'rule-match', 0.85, 'confirmed'),
+  ('d1000000-0000-0000-0000-000000000024', 'c1000000-0000-0000-0000-000000000002', 'b1000000-0000-0000-0000-000000000013', '011-2233445', 'rule-match', 0.90, 'confirmed'),
+  ('d1000000-0000-0000-0000-000000000025', 'c1000000-0000-0000-0000-000000000002', 'b1000000-0000-0000-0000-000000000004', 'Single', 'rule-match', 0.75, 'confirmed'),
+  ('d1000000-0000-0000-0000-000000000026', 'c1000000-0000-0000-0000-000000000002', 'b1000000-0000-0000-0000-000000000006', null, 'missing', 0, 'missing')
+on conflict (id) do nothing;
 
-insert into document_items (case_id, bank_id, doc_name, status, received_at) values
-('cccccccc-cccc-cccc-cccc-cccccccccccc', '11111111-1111-1111-1111-111111111111', '3 months payslip', 'received', now()),
-('cccccccc-cccc-cccc-cccc-cccccccccccc', '11111111-1111-1111-1111-111111111111', '6 months bank statement', 'received', now()),
-('cccccccc-cccc-cccc-cccc-cccccccccccc', '11111111-1111-1111-1111-111111111111', 'EA Form / Income Tax', 'pending', null),
-('cccccccc-cccc-cccc-cccc-cccccccccccc', '11111111-1111-1111-1111-111111111111', 'IC (front & back)', 'received', now()),
-('cccccccc-cccc-cccc-cccc-cccccccccccc', '11111111-1111-1111-1111-111111111111', 'Offer Letter', 'missing', null),
-('dddddddd-dddd-dddd-dddd-dddddddddddd', '22222222-2222-2222-2222-222222222222', '3 months payslip', 'received', now()),
-('dddddddd-dddd-dddd-dddd-dddddddddddd', '22222222-2222-2222-2222-222222222222', '6 months bank statement', 'pending', null),
-('dddddddd-dddd-dddd-dddd-dddddddddddd', '22222222-2222-2222-2222-222222222222', 'IC (front & back)', 'received', now())
-on conflict do nothing;
-
-insert into income_calculations (case_id, bank_id, eligible_income, method_snapshot, calculated_by) values
-(
-  'cccccccc-cccc-cccc-cccc-cccccccccccc',
-  '11111111-1111-1111-1111-111111111111',
-  8250,
-  '{"bank": "Maybank", "dsr_limit": 0.70, "rules_applied": {"basic": 1.0, "allowance": 0.5}}',
-  'Demo Officer'
-),
-(
-  'cccccccc-cccc-cccc-cccc-cccccccccccc',
-  '22222222-2222-2222-2222-222222222222',
-  8250,
-  '{"bank": "CIMB Bank", "dsr_limit": 0.65, "rules_applied": {"basic": 1.0, "allowance": 0.5}}',
-  'Demo Officer'
-)
-on conflict do nothing;
-
-insert into loan_eligibilities (case_id, bank_id, max_loan_amount, monthly_instalment, dsr_ratio, eligibility_status) values
-(
-  'cccccccc-cccc-cccc-cccc-cccccccccccc',
-  '11111111-1111-1111-1111-111111111111',
-  520000,
-  2838,
-  0.344,
-  'eligible'
-),
-(
-  'cccccccc-cccc-cccc-cccc-cccccccccccc',
-  '22222222-2222-2222-2222-222222222222',
-  480000,
-  2648,
-  0.321,
-  'eligible'
-)
-on conflict do nothing;
+insert into audit_logs (id, action, entity_type, entity_id, details) values
+  ('e1000000-0000-0000-0000-000000000001', 'tally_run', 'submission', 'c1000000-0000-0000-0000-000000000001', '{"fields_matched": 13, "fields_missing": 2, "score": 80}'),
+  ('e1000000-0000-0000-0000-000000000002', 'tally_run', 'submission', 'c1000000-0000-0000-0000-000000000002', '{"fields_matched": 8, "fields_missing": 7, "score": 53}'),
+  ('e1000000-0000-0000-0000-000000000003', 'submission_finalized', 'submission', 'c1000000-0000-0000-0000-000000000003', '{"score": 100, "finalized_by": "demo_officer"}')
+on conflict (id) do nothing;

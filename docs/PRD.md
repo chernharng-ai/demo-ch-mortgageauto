@@ -1,34 +1,32 @@
-# PRD — Mortgage Case Review System
+# Mortgage Loan Client Info Tally System
 
 ## Problem
-Mortgage officers manually recalculate client income and loan eligibility for each bank using different methods — prone to errors, inconsistent across team members, and painful for new joiners with no institutional knowledge.
+Property agents send client info in many ad-hoc formats (email, WhatsApp, PDF text, agent's own form). Mortgage loan officers must manually transcribe and cross-check each against a standard application template — fields get missed, forms are incomplete, rework piles up.
 
-## Target Users
-Mortgage department team members (processors, reviewers, team leads). Multi-user, shared data, daily operational use.
+## Target User
+Mortgage loan department: officers who tally client info, reviewers who verify completeness, team lead who oversees throughput.
 
 ## Core Objects
-- **Case** — one client mortgage application
-- **Client** — borrower profile + income details
-- **Document Checklist** — per-case list of required docs with received/missing status
-- **Income Calculation** — bank-specific income computation (each bank has its own method)
-- **Loan Eligibility** — computed max loan amount per bank per case
-- **Bank** — bank name + calculation rules/parameters
+- **Standard Template** — canonical list of fields required for a mortgage loan application (applicant name, NRIC, income, property details, loan amount, etc.)
+- **Submission** — raw client info pasted by an officer, tagged with agent name and source format
+- **Tally Entry** — per-field extraction result: value found, confidence, review status (present / missing / uncertain)
+- **Completeness Score** — % of required template fields filled with at-least-medium confidence
 
-## MVP Must-Haves
-- [ ] Create a Case linked to a Client
-- [ ] Tally client documents (mark each as received / missing / pending)
-- [ ] Enter income details; system calculates eligible income per bank's method
-- [ ] System computes max loan eligibility for each configured bank
-- [ ] Case review dashboard showing all open cases and their status
-- [ ] Results are shareable / visible to all team members without login (demo-first)
-- [ ] New case creation and editing persists to database
+## MVP (v1) — Checklist
+- [ ] One active standard template with ~15 required fields pre-loaded
+- [ ] Paste raw client info → system tallies against template fields (rule-based keyword matching)
+- [ ] Results table: each field shows extracted value, confidence, or MISSING
+- [ ] Officer can edit/override any tally entry value
+- [ ] Completeness score recalculates on save
+- [ ] Dashboard lists all submissions with status + score, sortable/filterable
+- [ ] Export tally as a clean filled-template view (printable)
+- [ ] Works without login (demo-first with seed data)
 
 ## Non-Goals (v1)
-- Client portal / external-facing views
-- Online mortgage application intake
-- Payment processing or fee collection
-- Complex audit trail (added later)
-- Mobile-native app
+- No AI extraction (rule-based matching only in v1)
+- No user accounts / login (added in lock-down sprint)
+- No direct integration with bank systems or e-forms
+- No document upload / OCR (paste text only)
 
 ## Success Criteria
-A team member opens a new Case, fills in the client's income details, ticks off received documents, and immediately sees the calculated eligible income and max loan amount for all 3+ configured banks — no manual formula needed, no Excel, result matches the bank's official method.
+An officer pastes a messy WhatsApp message from an agent into the tally screen, the system matches 12 of 15 template fields and flags 3 missing (income proof, employer name, EPF balance), the officer fills 2 from memory and marks 1 as outstanding. Completeness reads 93%. The submission appears on the dashboard as "reviewed". This entire flow works in the preview deployment without logging in.

@@ -1,6 +1,6 @@
 # demo-ch-mortgageauto
 
-Auto Mortgage Loan Case Review System — a shared internal tool for mortgage teams to tally client documents, calculate income by bank method, and determine max loan eligibility per bank, with built-in rules to prevent calculation errors.
+Mortgage loan client info tally system — officers paste raw client info from property agents, system tallies it against a standard mortgage application template, flags missing fields, and scores completeness.
 
 ## ⚠️ READ THIS BEFORE WRITING ANY CODE
 A complete, correct plan for this app is already committed in `/docs`. Do **not** start
@@ -46,10 +46,9 @@ build the wrong thing (e.g. a marketing landing page). Open the plan and build f
   the next deploy.
 - **The Supabase database is already provisioned** and its keys are in this project's Vercel
   env. Pull them locally: `vercel link` then `vercel env pull .env.local`. Don't invent new ones.
-- **Your database is already set up.** The schema from your data model has been applied to
-  this project's Supabase database and committed at `supabase/migrations/0001_init.sql`. Build on
-  the existing tables — **do not recreate them**. To change the schema, add a NEW migration file
-  (`supabase/migrations/0002_*.sql`) and apply it; never edit `0001`.
+- **Database-first:** the schema is written at `supabase/migrations/0001_init.sql` but **not yet
+  applied**. Apply it to this project's Supabase database BEFORE building features (e.g. paste it into
+  the Supabase SQL editor, or `supabase db push`). Don't build local-only / in-memory.
 - **Commit as your GitHub identity, or Vercel will block the deploy.** Vercel verifies that
   every commit's author email belongs to your GitHub account. Your machine's default git email
   often isn't, so the very first local commit gets rejected. Pin this repo's identity once

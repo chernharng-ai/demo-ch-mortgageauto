@@ -1,32 +1,21 @@
 # Test Plan
 
-## v1 Success Scenario (manual)
-1. Open app homepage — case dashboard loads with 2 seeded demo cases. No login prompt.
-2. Click "New Case" — form renders with all fields.
-3. Enter: Client name "Ahmad bin Ali", employment type "Employed", employer "Petronas".
-4. Enter income entries: Basic RM 5,000/month, Allowance RM 1,000/month.
-5. Submit — case appears in dashboard with status "draft", doc completeness 0%.
-6. Open case detail — document checklist shows all required docs as "pending".
-7. Tick 3 documents as "received" — completeness badge updates immediately.
-8. Click "Run Calculation" — income calculations and loan eligibilities appear for all 3 banks.
-9. Verify: Maybank eligible income = (5000×1.0 + 1000×0.5) = RM 5,500. Max loan within expected range.
-10. Open a second browser tab — same case and results visible without any login.
+## v1 Success Scenario
+1. Open app in preview — no login required, dashboard shows seeded submissions.
+2. Click "New Tally" → select active template → paste raw client text (e.g. WhatsApp message with name, NRIC, income, property address but missing employer and EPF balance).
+3. Enter agent name + source format ("whatsapp") → click "Run Tally".
+4. Verify: results table shows ~12 of 15 fields with extracted values (green), 3 fields MISSING (red).
+5. Verify: completeness score displays (e.g. 80%).
+6. Click an extracted value → edit it → verify it saves (amber → green on refresh).
+7. Click a MISSING field → type a value → verify review_status changes to confirmed, score updates.
+8. Verify: submission appears on dashboard with correct status + score.
+9. Click "Export" → verify printable filled-template renders with all values + missing fields marked.
 
-## Empty State Tests
-- New deployment with no cases → dashboard shows "No cases yet. Create your first case." (not a blank screen)
-- Case with no income entries → "Run Calculation" button disabled with tooltip "Add income entries first"
-
-## Error State Tests
-- Submit New Case form with blank client name → inline validation error, no DB write
-- Supabase offline → error banner "Unable to reach database. Please try again." shown on dashboard
-- Run Calculation with missing bank params → error message "Bank configuration incomplete — contact admin"
-
-## Calculation Accuracy Tests
-- Employed client, Basic RM 8,000, Allowance RM 2,000 → eligible income per Maybank rules = RM 9,000
-- Self-employed client, Net Profit RM 10,000 → eligible income per CIMB rules = RM 7,000 (0.7×)
-- DSR check: if monthly commitment RM 3,000 and eligible income RM 5,000 → DSR = 60%; eligibility = eligible (under 70%)
-
-## Permission Tests (Sprint 3)
-- Unauthenticated user: can view case list, cannot submit New Case form (button hidden / 401 returned)
-- Member: can create/edit own cases, cannot edit bank params
-- Admin: can edit bank `calc_params`; change logged in audit_logs
+## Empty / Error Cases
+- **No template:** if no active template exists, Tally screen shows message "No active template — ask team lead to configure one."
+- **Empty raw input:** Run Tally disabled; if forced, all fields show MISSING, score 0%.
+- **Blank dashboard:** shows "No submissions yet. Start by tallying client info." with CTA button.
+- **Network error:** toast "Could not save — check connection and retry." Data not lost (stays in form).
+- **Loading state:** results table shows skeleton rows while extraction runs.
+- **Duplicate field match:** if raw text contains multiple values for one field (e.g. two phone numbers), system picks first match and flags review_status as uncertain (amber).
+- **Delete submission:** confirmation dialog required; on confirm, submission + tally entries removed, audit log written.

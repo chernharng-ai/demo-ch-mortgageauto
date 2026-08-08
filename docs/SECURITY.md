@@ -1,23 +1,19 @@
 # Security
 
-## Secrets
-- Supabase URL + anon key in `.env.local` only; never in client bundle as writeable secrets.
-- Service role key never exposed to frontend — only used in server-side actions.
+## Secret Handling
+- Supabase service role key: server-side only, never imported in client components.
+- Next.js API routes / server actions use key from environment variables — never exposed to browser.
+- No secrets in client bundle. No `.env` committed.
 
-## Permission Model (v1)
-- All tables open with permissive RLS policies (demo-first; no login required to view or edit).
-- Lock-down sprint: add `auth.uid() = user_id` policies; anonymous read removed; write requires session.
+## Permission Model
+- **v1 (demo-first):** no login wall. RLS policies are permissive (select + write for all). Seeded demo rows render for anonymous visitors.
+- **Lock-down sprint:** login required. RLS scoped to `auth.uid() = user_id` on all tables. Roles: officer (CRUD submissions/entries), reviewer (read + finalize), team lead (all + template management).
+- Agent tools inherit the logged-in user's permissions — no elevated access.
 
-## Approved Tools Rule
-- Only named server actions (`run_income_calculation`, `run_loan_eligibility`, `generate_document_checklist`) may write calculation results.
-- No raw `eval`, no dynamic SQL, no `run_any` escape hatches.
-- Calculation logic lives server-side only; client receives results, not formulas.
+## Approved-Tools Rule
+- Only named, explicit server actions/API routes may write to the database. No generic `run_any` or `send_any` endpoints.
+- Each tool validates input shape before writing. No raw SQL from client.
+- Supabase RLS is the enforcement floor — even if a tool is misconfigured, RLS prevents cross-user data access after lock-down.
 
 ## Audit Principle
-- Every calculation run, status change, and document update is logged to `audit_logs` with before/after values.
-- Logs are append-only (no update/delete policy on `audit_logs`).
-- Team lead can review all logs; individual members see only their own actions until role-based RLS is added.
-
-## Stop Points
-- Do not store IC numbers unencrypted if the system moves outside internal LAN — stop and consult a security professional.
-- Do not send client data to any third-party AI API without explicit data-handling review.
+Every meaningful write (tally run, entry override, status change, finalize, delete) creates an `audit_logs` row with actor, entity, before/after. Read-only on audit table. Logs survive refresh and are identical across devices.

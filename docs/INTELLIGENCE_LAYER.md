@@ -1,44 +1,33 @@
 # Intelligence Layer
 
-## Messy Inputs Today
-- Income figures entered inconsistently (annual vs monthly mixed up)
-- Officers unsure which income components each bank counts
-- Document checklist tracked in spreadsheets, items missed
+## Messy Inputs
+Property agents send client info as: WhatsApp messages, email body text, PDF copy-paste, handwritten notes transcribed. No consistent structure, field labels vary ("IC No" vs "NRIC" vs "MyKad"), some fields omitted entirely.
 
-## Auto-Structure (v1 — rule-based, no AI)
-All structuring is deterministic from `banks.calc_params`:
+## Auto-Structure Schema (JSON example)
 ```json
 {
-  "bank": "Maybank",
-  "dsr_limit": 0.70,
-  "stress_rate": 0.065,
-  "income_rules": {
-    "employed": { "basic": 1.0, "allowance": 0.5, "commission": 0.5 },
-    "self_employed": { "net_profit": 0.7 },
-    "commission": { "commission": 0.5, "basic": 1.0 }
-  },
-  "tenure_max_years": 35
+  "applicant_name": {"value": "Lim Wei Jian", "confidence": 0.95, "source": "rule-match"},
+  "nric": {"value": "880214-14-5566", "confidence": 0.90, "source": "rule-match"},
+  "monthly_income": {"value": null, "confidence": 0, "source": "missing"},
+  "property_address": {"value": "No 12, Jalan Indah", "confidence": 0.60, "source": "rule-match"}
 }
 ```
-Eligible income = sum of (gross_amount × bank multiplier per income_type).
-Max loan = eligible_income × DSR / monthly_rate(stress_rate, tenure).
 
 ## Events to Track
-- Case created
-- Document status changed
-- Income entry added / edited
-- Calculation run
-- Eligibility result viewed
+- `tally_run` — new submission tallied
+- `entry_override` — officer changed extracted value
+- `entry_missing_flagged` — field marked missing
+- `submission_finalized` — status → finalized
+- `compliance_threshold_hit` — score crossed 90%
 
-## Scoring (v1)
-- Document completeness score: received_docs / total_docs × 100
-- Eligibility status: eligible (DSR ≤ limit), marginal (within 5%), ineligible (over limit)
+## Scoring Rules (v1, rule-based)
+- **Field match:** regex/keyword against field_key + field_label aliases. Confidence 0.9 for exact label match, 0.6 for fuzzy.
+- **Completeness score:** `(confirmed + uncertain fields) / required fields × 100`. Missing fields excluded.
+- **Submission priority:** `missing_required_count` desc, then `created_at` asc.
 
 ## What Gets Ranked
-- Cases sorted by status + document completeness on dashboard
-- Banks sorted by max loan amount on case detail page
+Submissions on dashboard ranked by: missing required field count (most missing = highest priority) → recency.
 
-## Later (AI)
-- Suggest income type classification from uploaded payslip OCR
-- Flag anomalies (income spike vs prior months)
-- Draft rejection/approval summary letter
+## v1 vs Later
+- **v1:** keyword/regex matching, rule-based confidence, completeness math.
+- **Later:** LLM extraction for unstructured prose, semantic field aliases, learned correction suggestions from override patterns.

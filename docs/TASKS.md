@@ -1,65 +1,48 @@
 # Tasks & Sprints
 
-## Sprint 1 — Database + Core Engine (v1 functional milestone)
-**Goal:** DB schema live, bank calculation engine working end-to-end, viewable without login.
-- [ ] Run migration SQL: create all tables, seed 3 banks + 2 demo cases
-- [ ] Build Case list page (dashboard) — shows all cases, status, doc completeness %
-- [ ] Build New Case form — creates `cases` + `clients` row, auto-generates document checklist
-- [ ] Build Case Detail page — shows client info, document checklist (tick/update status), income entries
-- [ ] Build Income Entry form — add/edit income lines for a case
-- [ ] Implement `run_income_calculation` server action (coded rules from `banks.calc_params`)
-- [ ] Implement `run_loan_eligibility` server action
-- [ ] Display eligibility results per bank on Case Detail page (sorted by max loan amount)
-- [ ] All five UI states handled: loading spinner, empty state copy, partial data, error banner, ready
-- [ ] Seed data renders correctly on first load (no login required)
+## Sprint 1 — Core Tally Engine (v1 functional milestone)
+**Goal:** Officer can paste raw client info, tally against template, see results — end to end, no login.
+- [ ] Create Supabase tables (templates, template_fields, submissions, tally_entries, audit_logs) + RLS permissive policies + seed data
+- [ ] Seed one active template with ~15 mortgage fields (applicant name, NRIC, DOB, marital status, monthly income, employer, employment duration, property address, property type, purchase price, loan amount, loan tenure, contact number, email, EPF balance)
+- [ ] Tally screen: paste raw text, agent name, source format → save submission
+- [ ] Rule-based extraction engine: keyword/regex match raw text to each template field → create tally entries with value + confidence + review_status
+- [ ] Results table: each field shows extracted value (green), uncertain (amber), MISSING (red)
+- [ ] Completeness score calculation + display
+- [ ] Audit log on tally run
+**Definition of Done:** Paste a raw WhatsApp-style client message, system fills ≥10 of 15 fields and clearly flags missing ones, completeness score displays. Works in preview without login.
 
-**Definition of Done:** A team member can open the app, create a new case, enter income details, tick documents, click "Run Calculation", and see max loan eligibility for all 3 seeded banks — persisted to DB, visible to any team member on refresh.
+## Sprint 2 — Review, Edit & Dashboard
+**Goal:** Officer can review/edit tally entries; dashboard shows all submissions.
+- [ ] Edit/override any tally entry value (inline edit → saves to DB, logs audit)
+- [ ] Manually add value for a MISSING field → review_status changes to confirmed
+- [ ] Submission status workflow: pending → reviewed → finalized
+- [ ] Dashboard: all submissions with client name, agent, status, completeness score, missing count. Sort by missing count desc. Filter by status.
+- [ ] Export view: printable filled-template (all fields with values, missing marked)
+- [ ] Empty/loading/error states on all screens
+**Definition of Done:** Officer edits 2 tally values, adds 1 missing field, marks submission reviewed, sees it on dashboard with updated 93% score, exports printable view.
 
----
+## Sprint 3 — Smart Extraction & Ranking
+**Goal:** AI extraction for unstructured prose; priority ranking on dashboard.
+- [ ] AI extraction: LLM call to parse free-text into structured fields for entries the rule engine missed (source = "ai-extract", confidence from model)
+- [ ] Dashboard ranking by missing required count → recency
+- [ ] Suggest missing value from context (medium-risk, one-click approve)
+- [ ] Override pattern tracking (store corrections for future improvement)
+**Definition of Done:** A fully unstructured paragraph (no labels) extracts ≥8 of 15 fields via AI, suggestions appear for 2 more, officer approves one-click. Dashboard ranks by urgency.
 
-## Sprint 2 — Polish + Bank Management
-**Goal:** Team can manage banks and calculation parameters; case workflow is complete.
-- [ ] Bank admin page — view/edit `calc_params` and `doc_requirements` per bank
-- [ ] Case status workflow (draft → in-review → approved/rejected) with confirmation dialog
-- [ ] Document checklist completeness badge on dashboard
-- [ ] Case notes / comments field
-- [ ] Audit log table (`audit_logs`) — log all calc runs and status changes
-- [ ] Error handling: show validation errors inline on all forms
-- [ ] Calculation method snapshot stored with each result (for traceability)
+## Sprint 4 — Lock Down
+**Goal:** Auth, roles, per-user data isolation.
+- [ ] Supabase auth (login/signup) — officer, reviewer, team lead roles
+- [ ] Replace permissive RLS with `auth.uid() = user_id` owner-scoped policies
+- [ ] Team lead-only guard on template management
+- [ ] All previous screens gated behind login
+- [ ] Test: user A cannot see user B's submissions
+**Definition of Done:** Two logged-in users see only their own submissions. Team lead can edit template; officer cannot. Unauthenticated visitor redirected to login.
 
-**Definition of Done:** Team lead can update a bank's DSR limit, re-run calculation on an existing case, and see the new result with the old result preserved in audit log.
-
----
-
-## Sprint 3 — Lock It Down (Auth + Per-User Isolation)
-**Goal:** Only authenticated team members can create/edit; data isolated by owner.
-- [ ] Enable Supabase Auth (email/password)
-- [ ] Login + signup pages; redirect unauthenticated users
-- [ ] Replace open RLS policies with `auth.uid() = user_id` write policies
-- [ ] Assign `user_id` on all new rows
-- [ ] Role field on users: `member` / `reviewer` / `admin`
-- [ ] Admin-only: bank parameter editing, audit log viewing
-- [ ] Test: anonymous visitor can VIEW dashboard (read) but cannot create/edit
-
-**Definition of Done:** An unauthenticated browser can view the case dashboard but cannot submit any form. A logged-in member can create cases scoped to their account. An admin can edit bank params.
-
----
-
-## Sprint 4 — Intelligence Assists (Later)
-**Goal:** Reduce data entry errors with smart suggestions.
-- [ ] AI income type classification suggestion (from payslip description text)
-- [ ] Anomaly flag: flag if any income entry is >2× the client's prior case average
-- [ ] Draft case summary text (eligibility narrative) — shown as draft, officer confirms
-- [ ] All AI fields stored with source + confidence + review_status
-
-**Definition of Done:** AI suggestion appears on income entry form; officer can accept or override; review_status updates accordingly.
-
----
-
-## Gantt (Sprint → Feature)
+## Gantt
 ```
-Sprint 1: DB schema, case CRUD, income entry, calculation engine, eligibility output, dashboard
-Sprint 2: Bank mgmt, status workflow, audit logs, polish
-Sprint 3: Auth, RLS lock-down, roles
-Sprint 4: AI assists, anomaly detection, summary drafts
+Sprint 1 [Core Tally]    ████████  ← v1 functional
+Sprint 2 [Review+Dash]    ████████
+Sprint 3 [AI+Ranking]     ████████
+Sprint 4 [Lock Down]      ████████
 ```
+Build Sprints 1–2 in the first pass (delivers full success scenario). Sprint 3 adds intelligence. Sprint 4 secures.
