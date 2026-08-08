@@ -84,7 +84,9 @@ export async function createSubmissionAndTally(
   const matches = runTallyEngine(rawInput, fields);
 
   if (!sourceFormat) sourceFormat = detectSourceFormat(rawInput) ?? "other";
-  const clientName = matches.find((m) => m.field_key === "applicant_name")?.extracted_value ?? null;
+  const clientName =
+    matches.find((m) => (m.field_key === "name" || m.field_key === "applicant_name") && m.extracted_value)
+      ?.extracted_value ?? null;
 
   const score = computeCompleteness(
     matches.map((m, i) => ({

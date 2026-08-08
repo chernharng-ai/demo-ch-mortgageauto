@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { loadSubmissionWithEntries } from "@/lib/actions/tally";
 import { supabaseConfigured } from "@/lib/supabase/configured";
 import { missingRequiredCount } from "@/lib/tally/score";
+import { STANDARD_TEMPLATE_ID, renderStandardTemplate } from "@/lib/tally/standardTemplate";
+import CopyTemplatePanel from "./CopyTemplatePanel";
 import EntryRow from "./EntryRow";
 import StatusControl from "./StatusControl";
 import SubmissionToolbar from "./SubmissionToolbar";
@@ -60,6 +62,22 @@ export default async function SubmissionPage({ params }: { params: Promise<{ id:
         <StatusControl submissionId={submission.id} status={submission.status} />
         <SubmissionToolbar submissionId={submission.id} />
       </div>
+
+      {submission.template_id === STANDARD_TEMPLATE_ID && (
+        <CopyTemplatePanel
+          text={renderStandardTemplate(
+            Object.fromEntries(
+              entries.map((e) => [
+                e.template_fields?.field_key ?? "",
+                e.review_status === "missing" ? null : e.extracted_value,
+              ]),
+            ),
+          )}
+          missingCount={
+            entries.filter((e) => e.review_status === "missing" || !e.extracted_value).length
+          }
+        />
+      )}
 
       <div className="overflow-x-auto rounded-lg border border-neutral-200">
         <table className="w-full text-sm">

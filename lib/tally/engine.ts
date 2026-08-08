@@ -232,12 +232,161 @@ const EXTRACTORS: Record<string, Extractor> = {
   },
 };
 
+// ── Standard-template fields (labeled-line + zone-aware extraction) ─────────
+// Agents often send back the officer's own WhatsApp form, or a loose
+// "Label: value" list. Lines are matched label-first within the section
+// ("zone") they belong to, so "Name:" under *SPOUSE INFO* never collides
+// with the applicant's name. Falls back to the inline regex extractors above
+// for unlabeled prose.
+
+const ZONE_DEFS: { zone: string; re: RegExp }[] = [
+  { zone: "personal", re: /personal\s+info/i },
+  { zone: "spouse", re: /spouse\s+info/i },
+  { zone: "emergency", re: /emergency\s+contact/i },
+  { zone: "employment", re: /employment\s+details?/i },
+  { zone: "previous", re: /previous\s+employment/i },
+];
+
+/** Split raw text into named zones by section headers; zone absent if header absent. */
+function splitZones(text: string): Record<string, string> {
+  const lines = text.split("\n");
+  const zones: Record<string, string> = {};
+  let current: string | null = null;
+  let buffer: string[] = [];
+  const flush = () => {
+    if (current) zones[current] = (zones[current] ?? "") + buffer.join("\n") + "\n";
+    buffer = [];
+  };
+  for (const line of lines) {
+    const header = line.length < 80 ? ZONE_DEFS.find((z) => z.re.test(line)) : undefined;
+    if (header) {
+      flush();
+      current = header.zone;
+    } else {
+      buffer.push(line);
+    }
+  }
+  flush();
+  return zones;
+}
+
+function escapeAlias(alias: string): string {
+  return alias.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\\?\s+/g, "\\s*");
+}
+
+/** First "Label: value" line hit for any alias, anchored at line start (after bullets/numbering). */
+function lineValue(text: string, aliases: string[]): string | null {
+  const lines = text.split("\n");
+  for (const alias of aliases) {
+    const re = new RegExp(String.raw`^[\s>*\-•▶️\d.()]*${escapeAlias(alias)}\s*(?:\([^)]*\))?\s*[:：]\s*(.+)$`, "i");
+    for (const line of lines) {
+      const m = line.match(re);
+      if (!m) continue;
+      const value = m[1].trim().replace(/\s+/g, " ");
+      // Skip empty-template leftovers and the missing marker itself
+      if (!value || /^[-–—_.⚠️\s]*$/.test(value)) continue;
+      return value;
+    }
+  }
+  return null;
+}
+
+interface StandardFieldDef {
+  zone: string;
+  aliases: string[]; // tried in order; put the most specific first
+  fallback?: string; // key into EXTRACTORS for unlabeled-prose fallback
+}
+
+const STANDARD_FIELDS: Record<string, StandardFieldDef> = {
+  name: { zone: "personal", aliases: ["full name", "client name", "applicant name", "name", "client"], fallback: "applicant_name" },
+  nric: { zone: "personal", aliases: ["nric", "ic no", "ic number", "ic", "mykad"], fallback: "nric" },
+  contact_no: { zone: "personal", aliases: ["contact no", "contact number", "contact", "phone no", "phone number", "phone", "hp", "mobile", "tel"], fallback: "contact_number" },
+  email: { zone: "personal", aliases: ["email address", "email"], fallback: "email" },
+  height: { zone: "personal", aliases: ["height"] },
+  weight: { zone: "personal", aliases: ["weight"] },
+  mother_name: { zone: "personal", aliases: ["mother's full name", "mother full name", "mother's name", "mothers full name", "mother name"] },
+  residence_address: { zone: "personal", aliases: ["residence address", "residential address", "home address", "current address", "address"] },
+  own_or_rental: { zone: "personal", aliases: ["own or rental", "own/rental", "own rental"] },
+  years_of_residence: { zone: "personal", aliases: ["years of residence", "year of residence"] },
+  highest_education: { zone: "personal", aliases: ["highest education", "education level", "education"] },
+  race: { zone: "personal", aliases: ["race"] },
+  religion: { zone: "personal", aliases: ["religion"] },
+  bumiputera: { zone: "personal", aliases: ["bumiputera (yes / no)", "bumiputera"] },
+  marital_status: { zone: "personal", aliases: ["marital status"], fallback: "marital_status" },
+  spouse_name: { zone: "spouse", aliases: ["spouse name", "name"] },
+  spouse_nric: { zone: "spouse", aliases: ["spouse nric", "nric", "ic"] },
+  spouse_contact: { zone: "spouse", aliases: ["spouse contact no", "spouse contact", "contact no", "contact", "phone"] },
+  spouse_email: { zone: "spouse", aliases: ["spouse email", "email"] },
+  spouse_occupation: { zone: "spouse", aliases: ["spouse occupation", "occupation"] },
+  no_of_children: { zone: "spouse", aliases: ["no. of children", "no of children", "number of children", "children"] },
+  emergency_name: { zone: "emergency", aliases: ["emergency contact name", "emergency name", "name"] },
+  emergency_phone: { zone: "emergency", aliases: ["emergency phone", "phone no", "phone", "contact no", "contact"] },
+  emergency_address: { zone: "emergency", aliases: ["emergency address", "address"] },
+  emergency_relationship: { zone: "emergency", aliases: ["relationship"] },
+  company_name: { zone: "employment", aliases: ["company name", "company", "employer"], fallback: "employer_name" },
+  company_address: { zone: "employment", aliases: ["company address", "office address"] },
+  occupation: { zone: "employment", aliases: ["occupation", "position", "designation", "job title"] },
+  office_tel: { zone: "employment", aliases: ["office tel(landline)", "office tel", "office phone", "landline"] },
+  hr_email: { zone: "employment", aliases: ["hr company email", "hr email"] },
+  date_of_joining: { zone: "employment", aliases: ["date of joining", "joining date", "date joined"] },
+  length_of_service: { zone: "employment", aliases: ["length of service", "years of service"], fallback: "employment_duration" },
+  nature_of_business: { zone: "employment", aliases: ["nature of business", "business nature"] },
+  prev_company_name: { zone: "previous", aliases: ["previous company name", "company name"] },
+  prev_occupation: { zone: "previous", aliases: ["previous occupation", "occupation"] },
+  prev_nature_of_business: { zone: "previous", aliases: ["previous nature of business", "nature of business"] },
+  prev_length_of_service: { zone: "previous", aliases: ["length in service", "length of service"] },
+};
+
+// Zones whose generic aliases ("name", "address") are unsafe outside their own
+// section — without the section header, only spouse-/previous-prefixed aliases
+// may run against the full text.
+const ZONE_SCOPED = new Set(["spouse", "emergency", "previous"]);
+
+/** A comma-separated one-liner masquerading as a labeled value — the label matched but the "value" is the rest of the message. */
+function proseLike(value: string): boolean {
+  return value.length > 60 || (value.match(/,/g)?.length ?? 0) >= 2;
+}
+
+function extractStandardField(fullText: string, zones: Record<string, string>, def: StandardFieldDef): { value: string; confidence: number; ambiguous?: boolean } | null {
+  const zoneText = zones[def.zone];
+  let lineHit: string | null = null;
+  if (zoneText) {
+    lineHit = lineValue(zoneText, def.aliases);
+  } else if (ZONE_SCOPED.has(def.zone)) {
+    // No section header: only aliases that carry the section word are safe
+    const safe = def.aliases.filter((a) => /spouse|previous|emergency/i.test(a));
+    lineHit = safe.length ? lineValue(fullText, safe) : null;
+  } else {
+    lineHit = lineValue(fullText, def.aliases);
+  }
+
+  const fallback = def.fallback ? EXTRACTORS[def.fallback] : undefined;
+
+  if (lineHit && !proseLike(lineHit)) return { value: lineHit, confidence: 0.9 };
+  if (fallback) {
+    const hit = fallback.extract(fullText);
+    if (hit) return hit;
+  }
+  // Prose-like line hit with no better fallback: keep it, but flag for review
+  if (lineHit) return { value: lineHit, confidence: 0.6, ambiguous: true };
+  return null;
+}
+
 /** Run the rule engine over raw text for every template field. Always returns one match per field. */
 export function runTallyEngine(rawText: string, fields: TemplateFieldInput[]): TallyMatch[] {
-  const text = rawText.trim();
+  const text = rawText.trim().replace(/[’‘]/g, "'").replace(/[“”]/g, '"');
+  const zones = splitZones(text);
   return fields.map((field) => {
+    const std = STANDARD_FIELDS[field.field_key];
     const extractor = EXTRACTORS[field.field_key];
-    const hit = text.length > 0 && extractor ? extractor.extract(text) : null;
+    const hit =
+      text.length === 0
+        ? null
+        : std
+          ? extractStandardField(text, zones, std)
+          : extractor
+            ? extractor.extract(text)
+            : null;
     if (!hit) {
       return {
         template_field_id: field.id,

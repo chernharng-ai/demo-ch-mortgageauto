@@ -30,7 +30,7 @@ export default function NewTallyForm() {
           value={rawInput}
           onChange={(e) => setRawInput(e.target.value)}
           rows={10}
-          placeholder={"e.g.\nClient: Lim Wei Jian, IC: 880214-14-5566, DOB: 14/02/1988, Married, Income RM8500, Employer: Shell Malaysia, Property: No 12 Jalan Indah 4, Condominium, Price RM680000, Loan RM544000, Tenure 30 years, HP: 012-3456789, Email: limwj@gmail.com"}
+          placeholder={"Paste whatever the agent sent — the filled form, or a loose message like:\nName: Nurul Aina binti Rahman\nIC 900512-10-3344, HP 017-5566778, email aina@gmail.com\nkerja di Petronas, salary RM7300, married 2 kids…\n\nIt will be converted into your standard template; anything not found is marked ⚠️."}
           className="mt-1 w-full rounded-lg border border-neutral-300 p-3 font-mono text-sm text-neutral-900 placeholder:text-neutral-400 focus:border-neutral-500 focus:outline-none"
         />
       </div>
