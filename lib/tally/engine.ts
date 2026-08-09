@@ -312,8 +312,9 @@ function lineValue(text: string, aliases: string[]): string | null {
       const m = line.match(re);
       if (!m) continue;
       const value = m[1].trim().replace(/\s+/g, " ");
-      // Skip empty-template leftovers and the missing marker itself
-      if (!value || /^[-–—_.⚠️\s]*$/.test(value)) continue;
+      // Skip empty-template leftovers, the missing/not-needed markers, and
+      // bare unit words from blank form lines ("Length in Service:  Years").
+      if (!value || /^[-–—_.⚠️❌\s]*$/.test(value) || /^(?:years?|yrs?|tahun|months?|bulan)$/i.test(value)) continue;
       return value;
     }
   }
