@@ -37,7 +37,7 @@ export default async function DashboardPage() {
     <main className="min-h-screen p-6 sm:p-10 max-w-5xl mx-auto">
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Mortgage Case Review</h1>
+          <h1 className="text-2xl font-bold tracking-tight">AI Client Info Tally</h1>
           <p className="text-sm text-neutral-500 mt-1">Shared team dashboard — no login required.</p>
         </div>
         <div className="flex items-center gap-3">

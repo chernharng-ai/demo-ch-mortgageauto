@@ -3,7 +3,7 @@ import "./globals.css";
 import AppShell from "./AppShell";
 
 export const metadata: Metadata = {
-  title: "Mortgage Case Review",
+  title: "AI Client Info Tally",
   description: "Auto Mortgage Loan Case Review System",
 };
 

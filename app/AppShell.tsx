@@ -24,7 +24,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       {/* Mobile top bar */}
       <div className="md:hidden sticky top-0 z-30 flex items-center justify-between border-b border-neutral-200 bg-white px-4 py-3">
         <Link href="/" className="text-sm font-semibold text-neutral-900">
-          Mortgage Case Review
+          AI Client Info Tally
         </Link>
         <button
           type="button"
@@ -73,7 +73,7 @@ function SidebarContent({ pathname, onNavigate }: { pathname: string; onNavigate
   return (
     <nav className="flex flex-col gap-1 p-4">
       <div className="px-2 mb-4 hidden md:block">
-        <span className="text-sm font-bold tracking-tight text-neutral-900">Mortgage Case Review</span>
+        <span className="text-sm font-bold tracking-tight text-neutral-900">AI Client Info Tally</span>
       </div>
       {NAV_ITEMS.map((item) => {
         const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
