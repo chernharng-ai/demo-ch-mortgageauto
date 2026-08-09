@@ -23,7 +23,7 @@ export default function CopyTemplatePanel({ text, missingCount }: { text: string
           <p className="text-xs text-neutral-500">
             {missingCount === 0
               ? "All fields filled."
-              : `${missingCount} field${missingCount === 1 ? "" : "s"} not found — marked ⚠️. Edit below or send as-is to request the missing info.`}
+              : `${missingCount} field${missingCount === 1 ? "" : "s"} not found — marked ⚠️. Send as-is to request the missing info.`}
           </p>
         </div>
         <button

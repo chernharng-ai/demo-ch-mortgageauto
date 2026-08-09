@@ -5,7 +5,6 @@ import { supabaseConfigured } from "@/lib/supabase/configured";
 import { missingRequiredCount } from "@/lib/tally/score";
 import { STANDARD_TEMPLATE_ID, renderStandardTemplate } from "@/lib/tally/standardTemplate";
 import CopyTemplatePanel from "./CopyTemplatePanel";
-import EntryRow from "./EntryRow";
 import StatusControl from "./StatusControl";
 import SubmissionToolbar from "./SubmissionToolbar";
 import SetupNotice from "../SetupNotice";
@@ -78,25 +77,6 @@ export default async function SubmissionPage({ params }: { params: Promise<{ id:
           }
         />
       )}
-
-      <div className="overflow-x-auto rounded-lg border border-neutral-200">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-neutral-200 bg-neutral-50 text-left text-xs uppercase tracking-wide text-neutral-500">
-              <th className="px-4 py-2.5 font-medium">Field</th>
-              <th className="px-4 py-2.5 font-medium">Extracted value</th>
-              <th className="px-4 py-2.5 font-medium">Source</th>
-              <th className="px-4 py-2.5 font-medium">Confidence</th>
-              <th className="px-4 py-2.5 font-medium">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {entries.map((entry) => (
-              <EntryRow key={entry.id} entry={entry} submissionId={submission.id} />
-            ))}
-          </tbody>
-        </table>
-      </div>
 
       <details className="mt-6 rounded-lg border border-neutral-200">
         <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-neutral-700 hover:bg-neutral-50">
