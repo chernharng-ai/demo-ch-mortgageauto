@@ -4,14 +4,9 @@ import { supabaseConfigured } from "@/lib/supabase/configured";
 import { missingRequiredCount } from "@/lib/tally/score";
 import type { Submission } from "@/lib/tally/types";
 import SetupNotice from "./SetupNotice";
+import SubmissionsTable, { type SubmissionRowData } from "./SubmissionsTable";
 
 export const dynamic = "force-dynamic";
-
-const STATUS_BADGES: Record<string, string> = {
-  pending: "bg-neutral-100 text-neutral-700",
-  reviewed: "bg-amber-100 text-amber-800",
-  finalized: "bg-emerald-100 text-emerald-800",
-};
 
 const STATUS_FILTERS = ["all", "pending", "reviewed", "finalized"];
 
@@ -22,9 +17,9 @@ type SubmissionRow = Submission & {
 export default async function TallyDashboard({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; sort?: string }>;
+  searchParams: Promise<{ status?: string; sort?: string; q?: string }>;
 }) {
-  const { status = "all", sort = "priority" } = await searchParams;
+  const { status = "all", sort = "priority", q = "" } = await searchParams;
   if (!supabaseConfigured()) return <SetupNotice />;
   const supabase = await createClient();
 
@@ -32,12 +27,21 @@ export default async function TallyDashboard({
     .from("submissions")
     .select("*, tally_entries(extracted_value, review_status, template_fields(is_required))");
   if (STATUS_FILTERS.includes(status) && status !== "all") query = query.eq("status", status);
+  const search = q.trim().replace(/[,()]/g, " ").slice(0, 80);
+  if (search) query = query.or(`client_name.ilike.%${search}%,agent_name.ilike.%${search}%`);
 
   const { data, error } = await query;
   const submissions = (data ?? []) as SubmissionRow[];
 
-  const withMissing = submissions.map((s) => ({
-    ...s,
+  const rows: SubmissionRowData[] = submissions.map((s) => ({
+    id: s.id,
+    client_name: s.client_name,
+    agent_name: s.agent_name,
+    agent_agency: s.agent_agency,
+    source_format: s.source_format,
+    status: s.status,
+    completeness_score: Number(s.completeness_score),
+    created_at: s.created_at,
     missing: missingRequiredCount(
       s.tally_entries.map((e) => ({
         extracted_value: e.extracted_value,
@@ -48,9 +52,9 @@ export default async function TallyDashboard({
   }));
 
   // Priority ranking (docs/INTELLIGENCE_LAYER.md): most missing required first, then oldest first.
-  withMissing.sort((a, b) => {
+  rows.sort((a, b) => {
     if (sort === "recent") return +new Date(b.created_at) - +new Date(a.created_at);
-    if (sort === "score") return Number(b.completeness_score) - Number(a.completeness_score);
+    if (sort === "score") return b.completeness_score - a.completeness_score;
     return b.missing - a.missing || +new Date(a.created_at) - +new Date(b.created_at);
   });
 
@@ -72,11 +76,33 @@ export default async function TallyDashboard({
       </div>
 
       <div className="mb-4 flex flex-wrap items-center gap-4 text-sm">
+        <form action="/tally" method="get" className="flex items-center gap-2">
+          <input type="hidden" name="status" value={status} />
+          <input type="hidden" name="sort" value={sort} />
+          <input
+            type="search"
+            name="q"
+            defaultValue={q}
+            placeholder="Search client or agent…"
+            className="w-56 rounded-lg border border-neutral-300 px-3 py-1.5 text-sm text-neutral-900 placeholder:text-neutral-400 focus:border-neutral-500 focus:outline-none"
+          />
+          <button
+            type="submit"
+            className="rounded-lg border border-neutral-300 px-3 py-1.5 text-xs font-semibold text-neutral-700 hover:bg-neutral-50"
+          >
+            Search
+          </button>
+          {q && (
+            <Link href={`/tally?status=${status}&sort=${sort}`} className="text-xs text-neutral-500 hover:text-neutral-900">
+              Clear
+            </Link>
+          )}
+        </form>
         <div className="flex items-center gap-1">
           {STATUS_FILTERS.map((f) => (
             <Link
               key={f}
-              href={`/tally?status=${f}&sort=${sort}`}
+              href={`/tally?status=${f}&sort=${sort}&q=${encodeURIComponent(q)}`}
               className={`rounded-full px-3 py-1 text-xs font-medium ${
                 status === f ? "bg-neutral-900 text-white" : "text-neutral-600 hover:bg-neutral-100"
               }`}
@@ -90,7 +116,7 @@ export default async function TallyDashboard({
           {[["priority", "most missing"], ["recent", "newest"], ["score", "score"]].map(([key, label]) => (
             <Link
               key={key}
-              href={`/tally?status=${status}&sort=${key}`}
+              href={`/tally?status=${status}&sort=${key}&q=${encodeURIComponent(q)}`}
               className={`rounded-full px-2.5 py-1 font-medium ${
                 sort === key ? "bg-neutral-200 text-neutral-900" : "hover:bg-neutral-100"
               }`}
@@ -105,66 +131,22 @@ export default async function TallyDashboard({
         <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
           Could not load submissions: {error.message}
         </div>
-      ) : withMissing.length === 0 ? (
+      ) : rows.length === 0 ? (
         <div className="rounded-lg border border-dashed border-neutral-300 p-10 text-center">
-          <p className="text-sm text-neutral-600">No submissions yet. Start by tallying client info.</p>
-          <Link
-            href="/tally/new"
-            className="mt-4 inline-block rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white hover:bg-neutral-700"
-          >
-            + New Tally
-          </Link>
+          <p className="text-sm text-neutral-600">
+            {q ? `No submissions match "${q}".` : "No submissions yet. Start by tallying client info."}
+          </p>
+          {!q && (
+            <Link
+              href="/tally/new"
+              className="mt-4 inline-block rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white hover:bg-neutral-700"
+            >
+              + New Tally
+            </Link>
+          )}
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-neutral-200">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-neutral-200 bg-neutral-50 text-left text-xs uppercase tracking-wide text-neutral-500">
-                <th className="px-4 py-2.5 font-medium">Client</th>
-                <th className="px-4 py-2.5 font-medium">Agent</th>
-                <th className="px-4 py-2.5 font-medium">Source</th>
-                <th className="px-4 py-2.5 font-medium">Status</th>
-                <th className="px-4 py-2.5 font-medium">Missing req.</th>
-                <th className="px-4 py-2.5 font-medium">Score</th>
-                <th className="px-4 py-2.5 font-medium">Created</th>
-              </tr>
-            </thead>
-            <tbody>
-              {withMissing.map((s) => (
-                <tr key={s.id} className="border-b border-neutral-100 last:border-0 hover:bg-neutral-50">
-                  <td className="px-4 py-2.5">
-                    <Link href={`/tally/${s.id}`} className="font-medium text-neutral-900 hover:underline">
-                      {s.client_name ?? "Unnamed client"}
-                    </Link>
-                  </td>
-                  <td className="px-4 py-2.5 text-neutral-600">
-                    {s.agent_name ?? "—"}
-                    {s.agent_agency && <span className="text-neutral-400"> · {s.agent_agency}</span>}
-                  </td>
-                  <td className="px-4 py-2.5 text-neutral-600">{s.source_format ?? "—"}</td>
-                  <td className="px-4 py-2.5">
-                    <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_BADGES[s.status] ?? STATUS_BADGES.pending}`}>
-                      {s.status}
-                    </span>
-                  </td>
-                  <td className="px-4 py-2.5 tabular-nums">
-                    {s.missing > 0 ? (
-                      <span className="font-semibold text-red-600">{s.missing}</span>
-                    ) : (
-                      <span className="text-emerald-600">0</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-2.5 tabular-nums font-medium text-neutral-900">
-                    {Math.round(Number(s.completeness_score))}%
-                  </td>
-                  <td className="px-4 py-2.5 text-neutral-500">
-                    {new Date(s.created_at).toLocaleDateString("en-MY", { dateStyle: "medium" })}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <SubmissionsTable rows={rows} />
       )}
     </main>
   );

@@ -256,6 +256,27 @@ export async function deleteSubmission(submissionId: string): Promise<TallyActio
   redirect("/tally");
 }
 
+/** Bulk delete (docs/AGENTIC_LAYER.md: delete is human-only — UI must confirm first). */
+export async function deleteSubmissionsBulk(submissionIds: string[]): Promise<TallyActionState & { deleted?: number }> {
+  if (submissionIds.length === 0) return { error: "Nothing selected." };
+  const supabase = await createClient();
+
+  const { data: before } = await supabase
+    .from("submissions")
+    .select("id, client_name, agent_name, status, completeness_score")
+    .in("id", submissionIds);
+
+  const { error } = await supabase.from("submissions").delete().in("id", submissionIds);
+  if (error) return { error: `Could not delete: ${error.message}` };
+
+  for (const row of before ?? []) {
+    await logAudit(supabase, "submission_deleted", "submission", row.id, { before: row, bulk: true });
+  }
+
+  revalidatePath("/tally");
+  return { deleted: before?.length ?? submissionIds.length };
+}
+
 /** Re-run the rule engine over the saved raw input. Manual entries are never overwritten. */
 export async function reTallySubmission(submissionId: string): Promise<TallyActionState> {
   const supabase = await createClient();
