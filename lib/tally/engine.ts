@@ -305,8 +305,9 @@ function lineValue(text: string, aliases: string[]): string | null {
   const lines = text.split("\n");
   for (const alias of aliases) {
     // Leading decorations: bullets, numbering, emoji (✅📌▶️…) — anything
-    // that isn't a letter — get skipped before the label.
-    const re = new RegExp(String.raw`^[^A-Za-z\n]*${escapeAlias(alias)}\s*(?:\([^)]*\))?\s*[:：]\s*(.+)$`, "i");
+    // that isn't a letter — get skipped before the label. `\.?` after the
+    // alias covers labels written with a period ("Phone No.: 016…").
+    const re = new RegExp(String.raw`^[^A-Za-z\n]*${escapeAlias(alias)}\s*\.?\s*(?:\([^)]*\))?\s*[:：]\s*(.+)$`, "i");
     for (const line of lines) {
       const m = line.match(re);
       if (!m) continue;
