@@ -50,6 +50,6 @@ export async function updateBank(
   }
 
   revalidatePath("/banks");
-  revalidatePath("/");
+  revalidatePath("/cases");
   return { success: true };
 }

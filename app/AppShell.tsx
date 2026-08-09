@@ -5,9 +5,7 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 
 const NAV_ITEMS = [
-  { href: "/", label: "Dashboard" },
   { href: "/tally", label: "Client Tally" },
-  { href: "/banks", label: "Banks" },
 ];
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
@@ -91,11 +89,11 @@ function SidebarContent({ pathname, onNavigate }: { pathname: string; onNavigate
         );
       })}
       <Link
-        href="/cases/new"
+        href="/tally/new"
         onClick={onNavigate}
         className="mt-3 rounded-md bg-neutral-900 px-3 py-2 text-center text-sm font-medium text-white hover:bg-neutral-700 transition-colors"
       >
-        + New Case
+        + New Tally
       </Link>
     </nav>
   );

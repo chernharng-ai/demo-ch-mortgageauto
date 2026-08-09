@@ -11,7 +11,7 @@ export default async function BanksPage() {
 
   return (
     <main className="min-h-screen p-6 sm:p-10 max-w-3xl mx-auto">
-      <Link href="/" className="text-sm text-neutral-500 hover:underline">
+      <Link href="/cases" className="text-sm text-neutral-500 hover:underline">
         ← Back to dashboard
       </Link>
       <h1 className="text-2xl font-bold tracking-tight mt-2 mb-1">Bank Configuration</h1>

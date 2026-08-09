@@ -69,7 +69,7 @@ export async function createCase(
 
   await generateDocumentChecklist(caseRow.id, user?.id ?? null);
 
-  revalidatePath("/");
+  revalidatePath("/cases");
   redirect(`/cases/${caseRow.id}`);
 }
 
@@ -115,7 +115,7 @@ export async function updateDocumentStatus(
     .eq("id", itemId);
 
   revalidatePath(`/cases/${caseId}`);
-  revalidatePath("/");
+  revalidatePath("/cases");
 }
 
 export async function updateCaseStatus(
@@ -143,7 +143,7 @@ export async function updateCaseStatus(
   });
 
   revalidatePath(`/cases/${caseId}`);
-  revalidatePath("/");
+  revalidatePath("/cases");
 }
 
 export async function updateCaseNotes(caseId: string, notes: string) {
@@ -180,6 +180,6 @@ export async function deleteCase(caseId: string) {
   if (error) {
     console.error(`Case delete failed for ${caseId}:`, error.message);
   }
-  revalidatePath("/");
-  redirect("/");
+  revalidatePath("/cases");
+  redirect("/cases");
 }

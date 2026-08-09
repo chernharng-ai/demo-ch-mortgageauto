@@ -224,7 +224,7 @@ export async function bulkUploadDocuments(caseId: string, formData: FormData): P
   await autoDeriveAndCalculate(caseId);
 
   revalidatePath(`/cases/${caseId}`);
-  revalidatePath("/");
+  revalidatePath("/cases");
 
   return results;
 }
@@ -288,7 +288,7 @@ export async function retryExtraction(caseDocumentId: string, caseId: string) {
   await autoDeriveAndCalculate(caseId);
 
   revalidatePath(`/cases/${caseId}`);
-  revalidatePath("/");
+  revalidatePath("/cases");
 }
 
 /** Officer manually assigns a file the AI couldn't classify to a checklist item. */
@@ -313,7 +313,7 @@ export async function assignDocumentMatch(caseDocumentId: string, caseId: string
   }
 
   revalidatePath(`/cases/${caseId}`);
-  revalidatePath("/");
+  revalidatePath("/cases");
 }
 
 /** Manual override — resets every bank's row for a checklist item back to pending, e.g. after a misclassification. */
@@ -326,7 +326,7 @@ export async function resetDocumentGroupStatus(caseId: string, docName: string, 
     .eq("doc_name", docName);
 
   revalidatePath(`/cases/${caseId}`);
-  revalidatePath("/");
+  revalidatePath("/cases");
 }
 
 /** Adds a case-specific checklist item not tied to any bank's requirements, e.g. "Client Info" or "Prop Doc". */
@@ -343,7 +343,7 @@ export async function addChecklistItem(caseId: string, docName: string) {
   });
 
   revalidatePath(`/cases/${caseId}`);
-  revalidatePath("/");
+  revalidatePath("/cases");
 }
 
 /** Removes every row for a case-specific checklist item (bank_id is null — bank-required items can't be removed this way). */
@@ -353,7 +353,7 @@ export async function deleteChecklistItem(caseId: string, docName: string) {
   await supabase.from("document_sub_items").delete().eq("case_id", caseId).eq("doc_name", docName);
 
   revalidatePath(`/cases/${caseId}`);
-  revalidatePath("/");
+  revalidatePath("/cases");
 }
 
 /** Updates the case-type flags that drive the checklist template and (for property type) the DSR tier lookup. */
@@ -426,5 +426,5 @@ export async function generateChecklistFromTemplate(caseId: string) {
   await seedExpectedPeriodChips(supabase, caseId);
 
   revalidatePath(`/cases/${caseId}`);
-  revalidatePath("/");
+  revalidatePath("/cases");
 }
