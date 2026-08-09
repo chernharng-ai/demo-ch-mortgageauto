@@ -6,8 +6,6 @@ import { missingRequiredCount } from "@/lib/tally/score";
 import { STANDARD_TEMPLATE_ID, renderStandardTemplate } from "@/lib/tally/standardTemplate";
 import CopyTemplatePanel from "./CopyTemplatePanel";
 import RawInputEditor from "./RawInputEditor";
-import StatusControl from "./StatusControl";
-import SubmissionToolbar from "./SubmissionToolbar";
 import SetupNotice from "../SetupNotice";
 
 export const dynamic = "force-dynamic";
@@ -56,11 +54,6 @@ export default async function SubmissionPage({ params }: { params: Promise<{ id:
             completeness · {missingRequired} required missing
           </p>
         </div>
-      </div>
-
-      <div className="mb-6 flex flex-wrap items-center gap-3">
-        <StatusControl submissionId={submission.id} status={submission.status} />
-        <SubmissionToolbar submissionId={submission.id} />
       </div>
 
       {submission.template_id === STANDARD_TEMPLATE_ID && (
