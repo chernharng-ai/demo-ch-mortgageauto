@@ -64,16 +64,16 @@ export default async function SubmissionPage({ params }: { params: Promise<{ id:
               e.review_status === "missing" ? null : e.extracted_value,
             ]),
           );
+          const en = renderStandardTemplate(values, "en");
           return (
             <CopyTemplatePanel
               texts={{
-                en: renderStandardTemplate(values, "en"),
+                en,
                 ms: renderStandardTemplate(values, "ms"),
                 zh: renderStandardTemplate(values, "zh"),
               }}
-              missingCount={
-                entries.filter((e) => e.review_status === "missing" || !e.extracted_value).length
-              }
+              // Count from the rendered output so ❌ (not-needed) lines are excluded
+              missingCount={(en.match(/⚠️/g) ?? []).length}
             />
           );
         })()}

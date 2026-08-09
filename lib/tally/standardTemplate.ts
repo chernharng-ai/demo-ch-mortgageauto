@@ -7,6 +7,22 @@
 export const STANDARD_TEMPLATE_ID = "a1000000-0000-0000-0000-000000000002";
 
 export const MISSING_MARK = "⚠️";
+export const NOT_NEEDED_MARK = "❌";
+
+/**
+ * Owner rule: the PREVIOUS EMPLOYMENT section is only required when length of
+ * service is under 2 years (the form itself says "If Length of service less
+ * than 2 Year"). Unitless numbers are years per the form's convention;
+ * explicit months/bulan convert.
+ */
+function serviceYears(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const m = value.match(/([\d.]+)\s*(tahun|years?|yrs?|months?|bulan)?/i);
+  if (!m) return null;
+  const n = parseFloat(m[1]);
+  if (!Number.isFinite(n)) return null;
+  return /month|bulan/i.test(m[2] ?? "") ? n / 12 : n;
+}
 
 export type TemplateLang = "en" | "ms" | "zh";
 
@@ -114,11 +130,16 @@ export function renderStandardTemplate(
   valuesByKey: Record<string, string | null | undefined>,
   lang: TemplateLang = "en",
 ): string {
+  const years = serviceYears(valuesByKey.length_of_service);
+  const prevNotNeeded = years !== null && years >= 2;
+
   const parts: string[] = [HEADER_TEXT[lang]];
   for (const section of STANDARD_TEMPLATE) {
     const lines = section.lines.map((line) => {
       const value = valuesByKey[line.key]?.trim();
-      return `${line.label[lang]} ${value || MISSING_MARK}`;
+      if (value) return `${line.label[lang]} ${value}`;
+      const mark = prevNotNeeded && line.key.startsWith("prev_") ? NOT_NEEDED_MARK : MISSING_MARK;
+      return `${line.label[lang]} ${mark}`;
     });
     parts.push(`${section.header[lang]}\n${lines.join("\n")}`);
   }
