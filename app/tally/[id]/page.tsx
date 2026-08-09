@@ -56,21 +56,27 @@ export default async function SubmissionPage({ params }: { params: Promise<{ id:
         </div>
       </div>
 
-      {submission.template_id === STANDARD_TEMPLATE_ID && (
-        <CopyTemplatePanel
-          text={renderStandardTemplate(
-            Object.fromEntries(
-              entries.map((e) => [
-                e.template_fields?.field_key ?? "",
-                e.review_status === "missing" ? null : e.extracted_value,
-              ]),
-            ),
-          )}
-          missingCount={
-            entries.filter((e) => e.review_status === "missing" || !e.extracted_value).length
-          }
-        />
-      )}
+      {submission.template_id === STANDARD_TEMPLATE_ID &&
+        (() => {
+          const values = Object.fromEntries(
+            entries.map((e) => [
+              e.template_fields?.field_key ?? "",
+              e.review_status === "missing" ? null : e.extracted_value,
+            ]),
+          );
+          return (
+            <CopyTemplatePanel
+              texts={{
+                en: renderStandardTemplate(values, "en"),
+                ms: renderStandardTemplate(values, "ms"),
+                zh: renderStandardTemplate(values, "zh"),
+              }}
+              missingCount={
+                entries.filter((e) => e.review_status === "missing" || !e.extracted_value).length
+              }
+            />
+          );
+        })()}
 
       <RawInputEditor
         submissionId={submission.id}
