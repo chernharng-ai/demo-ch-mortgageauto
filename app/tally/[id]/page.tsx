@@ -5,6 +5,7 @@ import { supabaseConfigured } from "@/lib/supabase/configured";
 import { missingRequiredCount } from "@/lib/tally/score";
 import { STANDARD_TEMPLATE_ID, renderStandardTemplate } from "@/lib/tally/standardTemplate";
 import CopyTemplatePanel from "./CopyTemplatePanel";
+import RawInputEditor from "./RawInputEditor";
 import StatusControl from "./StatusControl";
 import SubmissionToolbar from "./SubmissionToolbar";
 import SetupNotice from "../SetupNotice";
@@ -78,14 +79,11 @@ export default async function SubmissionPage({ params }: { params: Promise<{ id:
         />
       )}
 
-      <details className="mt-6 rounded-lg border border-neutral-200">
-        <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-neutral-700 hover:bg-neutral-50">
-          Raw input ({submission.source_format ?? "unknown"})
-        </summary>
-        <pre className="whitespace-pre-wrap border-t border-neutral-200 bg-neutral-50 p-4 font-mono text-xs text-neutral-700">
-          {submission.raw_input}
-        </pre>
-      </details>
+      <RawInputEditor
+        submissionId={submission.id}
+        rawInput={submission.raw_input}
+        sourceFormat={submission.source_format}
+      />
     </main>
   );
 }

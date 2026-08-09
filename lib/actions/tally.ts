@@ -426,6 +426,37 @@ export async function aiExtractSubmission(submissionId: string): Promise<TallyAc
   return { suggested };
 }
 
+/**
+ * Officer pastes an UPDATED agent message over the saved raw input and
+ * re-tallies in place — same client, no new submission. Manual entries and
+ * manually-set client names still win (reTallySubmission semantics).
+ */
+export async function updateRawInputAndReTally(
+  submissionId: string,
+  newRawInput: string,
+): Promise<TallyActionState> {
+  const rawInput = newRawInput.trim();
+  if (!rawInput) return { error: "Raw input cannot be empty." };
+
+  const supabase = await createClient();
+  const { data: before, error: readError } = await supabase
+    .from("submissions")
+    .select("raw_input")
+    .eq("id", submissionId)
+    .single();
+  if (readError || !before) return { error: "Submission not found." };
+
+  const { error } = await supabase.from("submissions").update({ raw_input: rawInput }).eq("id", submissionId);
+  if (error) return { error: `Could not save: ${error.message}` };
+
+  await logAudit(supabase, "raw_input_updated", "submission", submissionId, {
+    before_chars: before.raw_input?.length ?? 0,
+    after_chars: rawInput.length,
+  });
+
+  return reTallySubmission(submissionId);
+}
+
 /** Shared loader for the results + export screens. */
 export async function loadSubmissionWithEntries(submissionId: string) {
   const supabase = await createClient();

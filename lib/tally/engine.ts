@@ -263,8 +263,8 @@ const EXTRACTORS: Record<string, Extractor> = {
 // for unlabeled prose.
 
 const ZONE_DEFS: { zone: string; re: RegExp }[] = [
-  { zone: "personal", re: /personal\s+info/i },
-  { zone: "spouse", re: /spouse\s+info/i },
+  { zone: "personal", re: /personal\s+(?:info|details)/i },
+  { zone: "spouse", re: /spouse\s+(?:info|details)/i },
   { zone: "emergency", re: /emergency\s+contact/i },
   { zone: "employment", re: /employment\s+details?/i },
   { zone: "previous", re: /previous\s+employment/i },
@@ -281,7 +281,10 @@ function splitZones(text: string): Record<string, string> {
     buffer = [];
   };
   for (const line of lines) {
-    const header = line.length < 80 ? ZONE_DEFS.find((z) => z.re.test(line)) : undefined;
+    // A section header must not itself carry a value ("Emergency Contact
+    // Name: MUHAMMAD…" is a field line, not the EMERGENCY CONTACT header).
+    const isHeaderish = line.length < 80 && !/:[ \t]*\S/.test(line);
+    const header = isHeaderish ? ZONE_DEFS.find((z) => z.re.test(line)) : undefined;
     if (header) {
       flush();
       current = header.zone;
@@ -301,7 +304,9 @@ function escapeAlias(alias: string): string {
 function lineValue(text: string, aliases: string[]): string | null {
   const lines = text.split("\n");
   for (const alias of aliases) {
-    const re = new RegExp(String.raw`^[\s>*\-•▶️\d.()]*${escapeAlias(alias)}\s*(?:\([^)]*\))?\s*[:：]\s*(.+)$`, "i");
+    // Leading decorations: bullets, numbering, emoji (✅📌▶️…) — anything
+    // that isn't a letter — get skipped before the label.
+    const re = new RegExp(String.raw`^[^A-Za-z\n]*${escapeAlias(alias)}\s*(?:\([^)]*\))?\s*[:：]\s*(.+)$`, "i");
     for (const line of lines) {
       const m = line.match(re);
       if (!m) continue;
@@ -332,7 +337,7 @@ const STANDARD_FIELDS: Record<string, StandardFieldDef> = {
   mother_name: { zone: "personal", aliases: ["mother's full name", "mother full name", "mother's name", "mothers full name", "mother name", "nama penuh ibu", "nama ibu"] },
   residence_address: { zone: "personal", aliases: ["residence address", "residential address", "home address", "current address", "alamat rumah", "alamat kediaman", "alamat semasa", "address", "alamat"] },
   own_or_rental: { zone: "personal", aliases: ["own or rental", "own/rental", "own rental", "sendiri atau sewa", "rumah sendiri atau sewa", "milik sendiri atau sewa"] },
-  years_of_residence: { zone: "personal", aliases: ["years of residence", "year of residence", "tempoh menetap", "lama menetap"] },
+  years_of_residence: { zone: "personal", aliases: ["years of residence", "year of residence", "years of staying", "tempoh menetap", "lama menetap"] },
   highest_education: { zone: "personal", aliases: ["highest education", "education level", "pendidikan tertinggi", "taraf pendidikan", "education", "pendidikan"] },
   race: { zone: "personal", aliases: ["race", "bangsa", "kaum"] },
   religion: { zone: "personal", aliases: ["religion", "agama"] },
@@ -345,13 +350,13 @@ const STANDARD_FIELDS: Record<string, StandardFieldDef> = {
   spouse_occupation: { zone: "spouse", aliases: ["spouse occupation", "pekerjaan pasangan", "pekerjaan suami", "pekerjaan isteri", "occupation", "pekerjaan"] },
   no_of_children: { zone: "spouse", aliases: ["no. of children", "no of children", "number of children", "bilangan anak", "jumlah anak", "children", "anak"], fallback: "kids_count" },
   emergency_name: { zone: "emergency", aliases: ["emergency contact name", "emergency name", "nama waris", "name", "nama"] },
-  emergency_phone: { zone: "emergency", aliases: ["emergency phone", "no tel waris", "phone no", "phone", "contact no", "contact", "no telefon"] },
+  emergency_phone: { zone: "emergency", aliases: ["emergency contact number", "emergency contact no", "emergency phone", "no tel waris", "phone no", "phone", "contact no", "contact", "no telefon"] },
   emergency_address: { zone: "emergency", aliases: ["emergency address", "alamat waris", "address", "alamat"] },
   emergency_relationship: { zone: "emergency", aliases: ["relationship", "hubungan"] },
   company_name: { zone: "employment", aliases: ["company name", "nama syarikat", "nama majikan", "tempat kerja", "company", "syarikat", "majikan", "employer"], fallback: "employer_name" },
   company_address: { zone: "employment", aliases: ["company address", "office address", "alamat syarikat", "alamat majikan", "alamat tempat kerja", "alamat pejabat"] },
   occupation: { zone: "employment", aliases: ["occupation", "position", "designation", "job title", "pekerjaan", "jawatan"] },
-  office_tel: { zone: "employment", aliases: ["office tel(landline)", "office tel", "office phone", "landline", "no tel pejabat", "tel pejabat"] },
+  office_tel: { zone: "employment", aliases: ["office tel(landline)", "office tel", "office phone", "office number", "landline", "no tel pejabat", "tel pejabat"] },
   hr_email: { zone: "employment", aliases: ["hr company email", "hr email", "emel hr", "emel syarikat"] },
   date_of_joining: { zone: "employment", aliases: ["date of joining", "joining date", "date joined", "tarikh mula kerja", "tarikh masuk kerja", "mula bekerja"] },
   length_of_service: { zone: "employment", aliases: ["length of service", "years of service", "tempoh perkhidmatan", "tempoh bekerja", "lama bekerja", "lama kerja"], fallback: "employment_duration" },
