@@ -124,9 +124,12 @@ const EXTRACTORS: Record<string, Extractor> = {
   },
   marital_status: {
     extract(text) {
-      const m = text.match(/\b(single|married|divorced|widowed|separated)\b/i);
+      // Malay statuses are kept as written (e.g. "Berkahwin", "Janda") — the
+      // officer reads both; translating "janda" (widowed vs divorced) would be
+      // guessing.
+      const m = text.match(/\b(single|married|divorced|widowed|separated|berkahwin|kahwin|bujang|janda|duda)\b/i);
       if (!m) return null;
-      const labeled = /marital|status/i.test(text.slice(Math.max(0, m.index! - 30), m.index));
+      const labeled = /marital|status|taraf|perkahwinan/i.test(text.slice(Math.max(0, m.index! - 30), m.index));
       const value = m[1][0].toUpperCase() + m[1].slice(1).toLowerCase();
       return { value, confidence: labeled ? 0.9 : 0.6 };
     },
@@ -317,50 +320,59 @@ interface StandardFieldDef {
   fallback?: string; // key into EXTRACTORS for unlabeled-prose fallback
 }
 
+// Aliases cover English AND Malay labels — agents write both ("Nama", "No KP",
+// "Alamat", "Pekerjaan", …). Most specific first.
 const STANDARD_FIELDS: Record<string, StandardFieldDef> = {
-  name: { zone: "personal", aliases: ["full name", "client name", "applicant name", "name", "client"], fallback: "applicant_name" },
-  nric: { zone: "personal", aliases: ["nric", "ic no", "ic number", "ic", "mykad"], fallback: "nric" },
-  contact_no: { zone: "personal", aliases: ["contact no", "contact number", "contact", "phone no", "phone number", "phone", "hp", "mobile", "tel"], fallback: "contact_number" },
-  email: { zone: "personal", aliases: ["email address", "email"], fallback: "email" },
-  height: { zone: "personal", aliases: ["height"] },
-  weight: { zone: "personal", aliases: ["weight"] },
-  mother_name: { zone: "personal", aliases: ["mother's full name", "mother full name", "mother's name", "mothers full name", "mother name"] },
-  residence_address: { zone: "personal", aliases: ["residence address", "residential address", "home address", "current address", "address"] },
-  own_or_rental: { zone: "personal", aliases: ["own or rental", "own/rental", "own rental"] },
-  years_of_residence: { zone: "personal", aliases: ["years of residence", "year of residence"] },
-  highest_education: { zone: "personal", aliases: ["highest education", "education level", "education"] },
-  race: { zone: "personal", aliases: ["race"] },
-  religion: { zone: "personal", aliases: ["religion"] },
+  name: { zone: "personal", aliases: ["full name", "client name", "applicant name", "nama penuh", "nama pelanggan", "nama", "name", "client"], fallback: "applicant_name" },
+  nric: { zone: "personal", aliases: ["nric", "no kad pengenalan", "kad pengenalan", "no kp", "no ic", "ic no", "ic number", "ic", "mykad"], fallback: "nric" },
+  contact_no: { zone: "personal", aliases: ["contact no", "contact number", "contact", "no telefon", "no tel", "telefon", "no hp", "phone no", "phone number", "phone", "hp", "mobile", "tel"], fallback: "contact_number" },
+  email: { zone: "personal", aliases: ["email address", "emel", "e-mel", "email"], fallback: "email" },
+  height: { zone: "personal", aliases: ["height", "tinggi"] },
+  weight: { zone: "personal", aliases: ["weight", "berat badan", "berat"] },
+  mother_name: { zone: "personal", aliases: ["mother's full name", "mother full name", "mother's name", "mothers full name", "mother name", "nama penuh ibu", "nama ibu"] },
+  residence_address: { zone: "personal", aliases: ["residence address", "residential address", "home address", "current address", "alamat rumah", "alamat kediaman", "alamat semasa", "address", "alamat"] },
+  own_or_rental: { zone: "personal", aliases: ["own or rental", "own/rental", "own rental", "sendiri atau sewa", "rumah sendiri atau sewa", "milik sendiri atau sewa"] },
+  years_of_residence: { zone: "personal", aliases: ["years of residence", "year of residence", "tempoh menetap", "lama menetap"] },
+  highest_education: { zone: "personal", aliases: ["highest education", "education level", "pendidikan tertinggi", "taraf pendidikan", "education", "pendidikan"] },
+  race: { zone: "personal", aliases: ["race", "bangsa", "kaum"] },
+  religion: { zone: "personal", aliases: ["religion", "agama"] },
   bumiputera: { zone: "personal", aliases: ["bumiputera (yes / no)", "bumiputera"] },
-  marital_status: { zone: "personal", aliases: ["marital status"], fallback: "marital_status" },
-  spouse_name: { zone: "spouse", aliases: ["spouse name", "name"] },
-  spouse_nric: { zone: "spouse", aliases: ["spouse nric", "nric", "ic"] },
-  spouse_contact: { zone: "spouse", aliases: ["spouse contact no", "spouse contact", "contact no", "contact", "phone"] },
-  spouse_email: { zone: "spouse", aliases: ["spouse email", "email"] },
-  spouse_occupation: { zone: "spouse", aliases: ["spouse occupation", "occupation"] },
-  no_of_children: { zone: "spouse", aliases: ["no. of children", "no of children", "number of children", "children"], fallback: "kids_count" },
-  emergency_name: { zone: "emergency", aliases: ["emergency contact name", "emergency name", "name"] },
-  emergency_phone: { zone: "emergency", aliases: ["emergency phone", "phone no", "phone", "contact no", "contact"] },
-  emergency_address: { zone: "emergency", aliases: ["emergency address", "address"] },
-  emergency_relationship: { zone: "emergency", aliases: ["relationship"] },
-  company_name: { zone: "employment", aliases: ["company name", "company", "employer"], fallback: "employer_name" },
-  company_address: { zone: "employment", aliases: ["company address", "office address"] },
-  occupation: { zone: "employment", aliases: ["occupation", "position", "designation", "job title"] },
-  office_tel: { zone: "employment", aliases: ["office tel(landline)", "office tel", "office phone", "landline"] },
-  hr_email: { zone: "employment", aliases: ["hr company email", "hr email"] },
-  date_of_joining: { zone: "employment", aliases: ["date of joining", "joining date", "date joined"] },
-  length_of_service: { zone: "employment", aliases: ["length of service", "years of service"], fallback: "employment_duration" },
-  nature_of_business: { zone: "employment", aliases: ["nature of business", "business nature"] },
-  prev_company_name: { zone: "previous", aliases: ["previous company name", "company name"] },
-  prev_occupation: { zone: "previous", aliases: ["previous occupation", "occupation"] },
-  prev_nature_of_business: { zone: "previous", aliases: ["previous nature of business", "nature of business"] },
-  prev_length_of_service: { zone: "previous", aliases: ["length in service", "length of service"] },
+  marital_status: { zone: "personal", aliases: ["marital status", "taraf perkahwinan", "status perkahwinan"], fallback: "marital_status" },
+  spouse_name: { zone: "spouse", aliases: ["spouse name", "nama pasangan", "nama suami", "nama isteri", "name", "nama"] },
+  spouse_nric: { zone: "spouse", aliases: ["spouse nric", "no kp pasangan", "ic pasangan", "nric", "no kp", "ic"] },
+  spouse_contact: { zone: "spouse", aliases: ["spouse contact no", "spouse contact", "no tel pasangan", "contact no", "contact", "no telefon", "phone"] },
+  spouse_email: { zone: "spouse", aliases: ["spouse email", "emel pasangan", "email", "emel"] },
+  spouse_occupation: { zone: "spouse", aliases: ["spouse occupation", "pekerjaan pasangan", "pekerjaan suami", "pekerjaan isteri", "occupation", "pekerjaan"] },
+  no_of_children: { zone: "spouse", aliases: ["no. of children", "no of children", "number of children", "bilangan anak", "jumlah anak", "children", "anak"], fallback: "kids_count" },
+  emergency_name: { zone: "emergency", aliases: ["emergency contact name", "emergency name", "nama waris", "name", "nama"] },
+  emergency_phone: { zone: "emergency", aliases: ["emergency phone", "no tel waris", "phone no", "phone", "contact no", "contact", "no telefon"] },
+  emergency_address: { zone: "emergency", aliases: ["emergency address", "alamat waris", "address", "alamat"] },
+  emergency_relationship: { zone: "emergency", aliases: ["relationship", "hubungan"] },
+  company_name: { zone: "employment", aliases: ["company name", "nama syarikat", "nama majikan", "tempat kerja", "company", "syarikat", "majikan", "employer"], fallback: "employer_name" },
+  company_address: { zone: "employment", aliases: ["company address", "office address", "alamat syarikat", "alamat majikan", "alamat tempat kerja", "alamat pejabat"] },
+  occupation: { zone: "employment", aliases: ["occupation", "position", "designation", "job title", "pekerjaan", "jawatan"] },
+  office_tel: { zone: "employment", aliases: ["office tel(landline)", "office tel", "office phone", "landline", "no tel pejabat", "tel pejabat"] },
+  hr_email: { zone: "employment", aliases: ["hr company email", "hr email", "emel hr", "emel syarikat"] },
+  date_of_joining: { zone: "employment", aliases: ["date of joining", "joining date", "date joined", "tarikh mula kerja", "tarikh masuk kerja", "mula bekerja"] },
+  length_of_service: { zone: "employment", aliases: ["length of service", "years of service", "tempoh perkhidmatan", "tempoh bekerja", "lama bekerja", "lama kerja"], fallback: "employment_duration" },
+  nature_of_business: { zone: "employment", aliases: ["nature of business", "business nature", "jenis perniagaan", "bidang perniagaan"] },
+  prev_company_name: { zone: "previous", aliases: ["previous company name", "syarikat terdahulu", "majikan terdahulu", "company name", "nama syarikat"] },
+  prev_occupation: { zone: "previous", aliases: ["previous occupation", "pekerjaan terdahulu", "occupation", "pekerjaan"] },
+  prev_nature_of_business: { zone: "previous", aliases: ["previous nature of business", "nature of business", "jenis perniagaan"] },
+  prev_length_of_service: { zone: "previous", aliases: ["length in service", "length of service", "tempoh perkhidmatan"] },
 };
 
-// Zones whose generic aliases ("name", "address") are unsafe outside their own
-// section — without the section header, only spouse-/previous-prefixed aliases
-// may run against the full text.
+// Zones whose fields must not steal the applicant's own labels when the
+// section header is absent. Only GENERIC aliases (ones the applicant's own
+// fields also use) are suppressed outside the zone — specific labels like
+// "bilangan anak" or "nama pasangan" are unambiguous anywhere.
 const ZONE_SCOPED = new Set(["spouse", "emergency", "previous"]);
+const GENERIC_ALIASES = new Set([
+  "name", "nama", "nric", "no kp", "ic", "contact no", "contact", "phone no", "phone",
+  "no telefon", "telefon", "email", "emel", "address", "alamat", "occupation", "pekerjaan",
+  "company name", "nama syarikat", "nature of business", "jenis perniagaan",
+  "length of service", "tempoh perkhidmatan",
+]);
 
 /** A comma-separated one-liner masquerading as a labeled value — the label matched but the "value" is the rest of the message. */
 function proseLike(value: string): boolean {
@@ -373,8 +385,8 @@ function extractStandardField(fullText: string, zones: Record<string, string>, d
   if (zoneText) {
     lineHit = lineValue(zoneText, def.aliases);
   } else if (ZONE_SCOPED.has(def.zone)) {
-    // No section header: only aliases that carry the section word are safe
-    const safe = def.aliases.filter((a) => /spouse|previous|emergency/i.test(a));
+    // No section header: suppress aliases the applicant's own fields also use
+    const safe = def.aliases.filter((a) => !GENERIC_ALIASES.has(a));
     lineHit = safe.length ? lineValue(fullText, safe) : null;
   } else {
     lineHit = lineValue(fullText, def.aliases);
