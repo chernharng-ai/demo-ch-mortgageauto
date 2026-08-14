@@ -24,6 +24,16 @@ function serviceYears(value: string | null | undefined): number | null {
   return /month|bulan/i.test(m[2] ?? "") ? n / 12 : n;
 }
 
+/**
+ * Owner rule: a single client has no spouse, so the SPOUSE INFO section is not
+ * needed (the section itself says "If Married"). Only single/bujang qualifies —
+ * divorced, widowed, and "divorce in process" are left as ⚠️ rather than
+ * guessing whether the officer still needs those details.
+ */
+function isSingle(value: string | null | undefined): boolean {
+  return !!value && /\b(single|bujang)\b/i.test(value);
+}
+
 export type TemplateLang = "en" | "ms" | "zh";
 
 export const TEMPLATE_LANGS: { code: TemplateLang; label: string }[] = [
@@ -132,14 +142,18 @@ export function renderStandardTemplate(
 ): string {
   const years = serviceYears(valuesByKey.length_of_service);
   const prevNotNeeded = years !== null && years >= 2;
+  const spouseNotNeeded = isSingle(valuesByKey.marital_status);
+
+  const notNeeded = (key: string) =>
+    (prevNotNeeded && key.startsWith("prev_")) ||
+    (spouseNotNeeded && (key.startsWith("spouse_") || key === "no_of_children"));
 
   const parts: string[] = [HEADER_TEXT[lang]];
   for (const section of STANDARD_TEMPLATE) {
     const lines = section.lines.map((line) => {
       const value = valuesByKey[line.key]?.trim();
       if (value) return `${line.label[lang]} ${value}`;
-      const mark = prevNotNeeded && line.key.startsWith("prev_") ? NOT_NEEDED_MARK : MISSING_MARK;
-      return `${line.label[lang]} ${mark}`;
+      return `${line.label[lang]} ${notNeeded(line.key) ? NOT_NEEDED_MARK : MISSING_MARK}`;
     });
     parts.push(`${section.header[lang]}\n${lines.join("\n")}`);
   }
